@@ -1,0 +1,149 @@
+name: Notion Backup
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # 12:30 IST every Monday and Friday.
+    # GitHub cron is UTC: 19:00 UTC Sunday and Thursday (IST = UTC+5:30).
+    - cron: "00 19 * * 0,4"
+
+concurrency:
+  group: notion-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  BACKUP_CONFIG: config/backup_config.json
+  RETENTION_DAYS: "60"
+  BACKUP_COMPRESSION_ENABLED: "false"
+  NOTION_REQUEST_TIMEOUT_SECONDS: "180"
+  NOTION_MAX_RETRIES: "8"
+  NOTION_PAGE_SIZE: "50"
+
+jobs:
+  backup:
+    name: "Monarch's Notion Backup"
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show trigger context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          set -euo pipefail
+          echo "GitHub event: ${EVENT_NAME}"
+          if [ -n "${EVENT_SCHEDULE:-}" ]; then
+            echo "Matched cron: ${EVENT_SCHEDULE}"
+          else
+            echo "Matched cron: manual dispatch"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y rclone
+
+      - name: Configure Google Drive archive
+        env:
+          RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RCLONE_CONFIG_B64:-}" ]; then
+            echo "RCLONE_CONFIG_B64 is not set; older backups will stay on GitHub and the run will report a storage warning."
+            exit 0
+          fi
+          mkdir -p "$HOME/.config/rclone"
+          printf '%s' "$RCLONE_CONFIG_B64" | base64 --decode > "$HOME/.config/rclone/rclone.conf"
+
+      - name: Run backup
+        id: backup
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/backup_notion.py --config "$BACKUP_CONFIG"
+
+      - name: Archive older backups to Drive
+        if: success()
+        run: |
+          set -euo pipefail
+          python scripts/manage_storage.py \
+            --config "$BACKUP_CONFIG" \
+            --current-snapshot "${{ steps.backup.outputs.snapshot_dir }}" \
+            --summary-file storage-summary.json
+
+      - name: Commit backup snapshot
+        if: success()
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add exports config docs scripts .github/workflows README.md
+          if git diff --cached --quiet; then
+            echo "No backup changes to commit."
+          else
+            git commit -m "Notion Backup Snapshots T,T-1"
+            branch="${GITHUB_REF_NAME:-main}"
+            for attempt in 1 2 3; do
+              git fetch origin "$branch"
+              git rebase "origin/$branch"
+              if git push origin "HEAD:$branch"; then
+                exit 0
+              fi
+              echo "Push failed on attempt $attempt; retrying after rebasing onto origin/$branch."
+              sleep 5
+            done
+            git push origin "HEAD:$branch"
+          fi
+
+      - name: Notify success
+        if: success()
+        env:
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NOTIFY_EMAIL_FROM: ${{ secrets.NOTIFY_EMAIL_FROM }}
+          NOTIFY_EMAIL_TO: ${{ secrets.NOTIFY_EMAIL_TO }}
+          SMTP_USE_TLS: ${{ vars.SMTP_USE_TLS }}
+        run: |
+          python scripts/notify.py \
+            --config "$BACKUP_CONFIG" \
+            --status success \
+            --manifest "${{ steps.backup.outputs.manifest_path }}" \
+            --message "Notion backup completed."
+
+      - name: Notify failure
+        if: failure()
+        env:
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NOTIFY_EMAIL_FROM: ${{ secrets.NOTIFY_EMAIL_FROM }}
+          NOTIFY_EMAIL_TO: ${{ secrets.NOTIFY_EMAIL_TO }}
+          SMTP_USE_TLS: ${{ vars.SMTP_USE_TLS }}
+        run: |
+          python scripts/notify.py \
+            --config "$BACKUP_CONFIG" \
+            --status failure \
+            --manifest "${{ steps.backup.outputs.manifest_path }}" \
+            --message "Notion backup failed. Check the GitHub Actions logs."

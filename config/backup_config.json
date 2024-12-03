@@ -1,0 +1,102 @@
+{
+  "format_version": "1.1.0",
+  "notion": {
+    "api_version": "2022-06-28",
+    "max_retries": 8,
+    "page_size": 50,
+    "retry_initial_sleep_seconds": 2,
+    "retry_max_sleep_seconds": 120,
+    "root_search_page_size": 25,
+    "timeout_seconds": 180
+  },
+  "backup": {
+    "timezone": "Asia/Kolkata",
+    "output_dir": "exports",
+    "archive_dir": "archives",
+    "include_all_accessible": false,
+    "scope": {
+      "mode": "configured_roots"
+    },
+    "traversal": {
+      "continue_on_object_error": true,
+      "fail_on_root_object_error": true,
+      "skip_inaccessible_child_databases": true
+    },
+    "roots": [
+      {
+        "type": "page",
+        "id": "345733f6-271e-80c0-ae70-d31b4a725ae9",
+        "title": "Sage Sanctuary \ud83c\udf3f",
+        "top_level_only": true,
+        "enabled": true
+      },
+      {
+        "type": "page",
+        "id": "345733f6-271e-804e-abd6-cc1fbffbaf8d",
+        "title": "Command Centre \ud83d\ude80",
+        "top_level_only": true,
+        "enabled": true
+      },
+      {
+        "type": "page",
+        "id": "351733f6-271e-811f-bd0f-fd7b50bb8cfa",
+        "title": "Ground Zero \ud83c\udf2a\ufe0f",
+        "top_level_only": true,
+        "enabled": true
+      }
+    ]
+  },
+  "retention": {
+    "enabled": true,
+    "retain_days": 60,
+    "min_snapshots": 2
+  },
+  "storage": {
+    "primary": "github",
+    "github": {
+      "keep_latest_snapshots": 2,
+      "description": "Keep only the latest backup and the one before it in this repository."
+    },
+    "external_archive": {
+      "enabled": true,
+      "provider": "google_drive",
+      "command": "rclone",
+      "remote": "notionbackups",
+      "folder": "NotionBackups",
+      "retention_days": 60,
+      "delete_remote_older_than_retention": true,
+      "description": "Older snapshots are uploaded to Google Drive as tar.gz archives before being removed from GitHub."
+    }
+  },
+  "compression": {
+    "enabled": false,
+    "format": "tar.gz"
+  },
+  "notifications": {
+    "channels": [
+      {
+        "name": "github_step_summary",
+        "type": "github_step_summary",
+        "enabled": true
+      },
+      {
+        "name": "email",
+        "type": "smtp_email",
+        "enabled": true,
+        "host_env": "SMTP_HOST",
+        "port_env": "SMTP_PORT",
+        "username_env": "SMTP_USERNAME",
+        "password_env": "SMTP_PASSWORD",
+        "from_env": "NOTIFY_EMAIL_FROM",
+        "to_env": "NOTIFY_EMAIL_TO",
+        "tls_env": "SMTP_USE_TLS"
+      },
+      {
+        "name": "generic_webhook",
+        "type": "webhook",
+        "enabled": false,
+        "url_env": "NOTIFY_WEBHOOK_URL"
+      }
+    ]
+  }
+}

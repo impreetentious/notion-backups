@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/*.log
+
+# Temporary
+*.tmp
+*.temp
+
+# Node
+node_modules/
+
+# Backup runtime artifacts
+cache/
