@@ -1,4 +1,4 @@
-# NotionBackups
+# Notion Backups
 
 Private, automated cron-based backup system for exporting Notion snapshots.
 

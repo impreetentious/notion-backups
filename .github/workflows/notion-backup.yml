@@ -25,6 +25,7 @@ env:
 
 jobs:
   backup:
+    if: false
     name: "Monarch's Notion Backup"
     runs-on: ubuntu-latest
     timeout-minutes: 360

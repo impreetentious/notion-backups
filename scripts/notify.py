@@ -133,10 +133,9 @@ def _write_step_summary(payload: dict[str, Any]) -> None:
         f"- Size: `{payload.get('backup_size') or 'unknown'}`",
         f"- Timestamp: `{payload.get('timestamp')}`",
         f"- Storage: `{payload.get('storage_destination') or 'unknown'}`",
-        f"- Run: {payload.get('run_url') or 'local'}",
+        
         "",
-        f"- Warnings: `{len(payload.get('warnings', []))}`",
-        f"- Errors: `{len(payload.get('errors', []))}`",
+        f"- Run: {payload.get('run_url') or 'local'}",
     ]
     line = "\n".join(lines)
     if summary_path:
@@ -211,11 +210,11 @@ def _email_body(payload: dict[str, Any]) -> str:
         f"Timestamp: {payload.get('timestamp')}",
         f"Size: {payload.get('backup_size') or 'unknown'}",
         f"Storage: {payload.get('storage_destination') or 'unknown'}",
-        f"Run: {payload.get('run_url') or 'local'}",
-        "",
-        f"Status: {payload['status_label']}",
         f"Warnings: {len(warnings)}",
         f"Errors: {len(errors)}",
+        "",
+        f"Status: {payload['status_label']}",
+        f"Run: {payload.get('run_url') or 'local'}",
     ]
     if warnings:
         lines.append("")
