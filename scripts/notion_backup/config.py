@@ -35,7 +35,7 @@ def _apply_env_overrides(config: dict[str, Any]) -> None:
     if os.getenv("BACKUP_ARCHIVE_DIR"):
         config.setdefault("backup", {})["archive_dir"] = os.environ["BACKUP_ARCHIVE_DIR"]
     if os.getenv("RETENTION_DAYS"):
-        config.setdefault("retention", {})["retain_days"] = int(os.environ["RETENTION_DAYS"])
+        config.setdefault("retention", {})["retain_days"] = max(1, int(os.environ["RETENTION_DAYS"]))
     if os.getenv("BACKUP_COMPRESSION_ENABLED"):
         value = os.environ["BACKUP_COMPRESSION_ENABLED"].strip().lower()
         config.setdefault("compression", {})["enabled"] = value in {"1", "true", "yes", "on"}
@@ -68,13 +68,13 @@ def _validate_config(config: dict[str, Any], path: Path) -> None:
 
     retention = config.get("retention", {})
     if retention.get("enabled", True):
-        retain_days = int(retention.get("retain_days", 60))
-        if retain_days < 60:
-            raise ValueError(f"{path}: retention.retain_days must be at least 60")
+        retain_days = int(retention.get("retain_days", 30))
+        if retain_days < 1:
+            raise ValueError(f"{path}: retention.retain_days must be at least 1")
 
-    github_keep = int(config.get("storage", {}).get("github", {}).get("keep_latest_snapshots", 2))
-    if github_keep < 2:
-        raise ValueError(f"{path}: storage.github.keep_latest_snapshots must be at least 2")
+    github_keep = int(config.get("storage", {}).get("github", {}).get("keep_latest_snapshots", 0))
+    if github_keep < 0:
+        raise ValueError(f"{path}: storage.github.keep_latest_snapshots must be at least 0")
 
 
 def enabled_roots(config: dict[str, Any]) -> list[dict[str, Any]]:

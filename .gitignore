@@ -24,3 +24,6 @@ node_modules/
 
 # Backup runtime artifacts
 cache/
+
+# Exports and archives (pushed directly to Google Drive)
+exports/

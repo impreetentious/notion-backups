@@ -48,14 +48,14 @@
   },
   "retention": {
     "enabled": true,
-    "retain_days": 60,
+    "retain_days": 30,
     "min_snapshots": 2
   },
   "storage": {
     "primary": "github",
     "github": {
-      "keep_latest_snapshots": 2,
-      "description": "Keep only the latest backup and the one before it in this repository."
+      "keep_latest_snapshots": 0,
+      "description": "No snapshots retained in GitHub; all are archived externally."
     },
     "external_archive": {
       "enabled": true,
@@ -63,9 +63,9 @@
       "command": "rclone",
       "remote": "notionbackups",
       "folder": "NotionBackups",
-      "retention_days": 60,
+      "retention_days": 30,
       "delete_remote_older_than_retention": true,
-      "description": "Older snapshots are uploaded to Google Drive as tar.gz archives before being removed from GitHub."
+      "description": "Snapshots are uploaded to Google Drive as tar.gz archives and removed from GitHub."
     }
   },
   "compression": {

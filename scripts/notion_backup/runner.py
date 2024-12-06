@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -144,8 +145,8 @@ class BackupRunner:
             deleted = apply_retention(
                 output_dir=output_dir,
                 archive_dir=archive_dir,
-                retain_days=int(retention.get("retain_days", 60)),
-                min_snapshots=int(retention.get("min_snapshots", 8)),
+                retain_days=int(retention.get("retain_days", 30)),
+                min_snapshots=int(retention.get("min_snapshots", 2)),
             )
             LOGGER.info("Retention removed %d expired paths", len(deleted))
 
@@ -188,8 +189,6 @@ class BackupRunner:
         root_type = root["type"]
         root_id = root.get("id")
         if not root_id and root.get("id_env"):
-            import os
-
             root_id = os.getenv(root["id_env"])
 
         if root_id:
@@ -518,8 +517,18 @@ def _is_linked_view_error(exc: NotionApiError) -> bool:
     return "does not contain any data sources accessible by this API bot" in message
 
 
-def _directory_size_bytes(path: Path) -> int:
-    return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
+def _write_manifest_with_size(snapshot_dir: Path, manifest: dict[str, Any]) -> None:
+    manifest_path = snapshot_dir / "manifest.json"
+    previous_size = -1
+    for _ in range(5):
+        write_json(manifest_path, manifest)
+        current_size = sum(child.stat().st_size for child in snapshot_dir.rglob("*") if child.is_file())
+        manifest["size_bytes"] = current_size
+        manifest["size_human"] = _format_bytes(current_size)
+        if current_size == previous_size:
+            break
+        previous_size = current_size
+    write_json(manifest_path, manifest)
 
 
 def _format_bytes(size: int) -> str:
@@ -534,20 +543,6 @@ def _format_bytes(size: int) -> str:
     return f"{size} B"
 
 
-def _write_manifest_with_size(snapshot_dir: Path, manifest: dict[str, Any]) -> None:
-    manifest_path = snapshot_dir / "manifest.json"
-    previous_size = -1
-    for _ in range(5):
-        write_json(manifest_path, manifest)
-        current_size = _directory_size_bytes(snapshot_dir)
-        manifest["size_bytes"] = current_size
-        manifest["size_human"] = _format_bytes(current_size)
-        if current_size == previous_size:
-            break
-        previous_size = current_size
-    write_json(manifest_path, manifest)
-
-
 def _external_archive_enabled(config: dict[str, Any]) -> bool:
     return bool(config.get("storage", {}).get("external_archive", {}).get("enabled", False))
 
@@ -556,5 +551,4 @@ def _runner_retention_enabled(config: dict[str, Any]) -> bool:
     retention = config.get("retention", {})
     if not retention.get("enabled", True):
         return False
-    # External archival owns active-layer cleanup so older snapshots are uploaded before deletion.
     return not _external_archive_enabled(config)

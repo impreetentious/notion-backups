@@ -34,8 +34,12 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
     archive_dir = Path(backup.get("archive_dir", "archives"))
     github_keep = int(storage.get("github", {}).get("keep_latest_snapshots", 2))
     snapshots = _snapshot_dirs(output_dir)
-    retained = snapshots[-github_keep:] if github_keep else []
-    candidates = snapshots[: max(len(snapshots) - len(retained), 0)]
+    if github_keep < 1:
+        retained = []
+        candidates = snapshots[:]
+    else:
+        retained = snapshots[-github_keep:]
+        candidates = snapshots[: max(len(snapshots) - len(retained), 0)]
 
     external = storage.get("external_archive", {})
     result = StorageResult(
@@ -79,21 +83,22 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
             result.errors.append(upload.stderr.strip() or upload.stdout.strip() or f"rclone exited {upload.returncode}")
             continue
         result.uploaded_to_external.append(remote_path)
+        # Update manifest with storage info before deleting the snapshot
+        _update_current_manifest(snapshot.path, result)
         shutil.rmtree(snapshot.path)
         result.deleted_from_github.append(snapshot.path.as_posix())
         archive_path.unlink(missing_ok=True)
 
     _cleanup_external_archives(config, result)
     result.destination = "github+google_drive" if result.uploaded_to_external else "github"
-    _update_current_manifest(current_snapshot_dir, result)
     return result
 
 
 def _cleanup_external_archives(config: dict[str, Any], result: StorageResult) -> None:
     external = config.get("storage", {}).get("external_archive", {})
     retain_days = int(external.get("retention_days", config.get("retention", {}).get("retain_days", 60)))
-    if retain_days < 60:
-        retain_days = 60
+    if retain_days < 10:
+        retain_days = 10
     if not external.get("delete_remote_older_than_retention", True):
         return
 

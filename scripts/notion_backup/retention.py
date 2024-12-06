@@ -17,8 +17,8 @@ def apply_retention(
     min_snapshots: int = 8,
     now: datetime | None = None,
 ) -> list[Path]:
-    if retain_days < 60:
-        raise ValueError("retain_days must be at least 60")
+    if retain_days < 1:
+        raise ValueError("retain_days must be at least 1")
 
     current_time = _normalize_datetime(now or datetime.now(timezone.utc))
     cutoff = current_time - timedelta(days=retain_days)
@@ -100,7 +100,6 @@ def _parse_snapshot_dir_name(name: str) -> datetime:
     if name.startswith("NB_"):
         return datetime.strptime(name, "NB_%Y%m%d_%H%M%S%z")
 
-    # Legacy runner snapshot IDs use YYYY-MM-DDTHH-MM-SS+ZZZZ to avoid colons in paths.
     if len(name) >= 19 and name[10] == "T" and name[13] == "-" and name[16] == "-":
         for pattern in ("%Y-%m-%dT%H-%M-%S%z", "%Y-%m-%dT%H-%M-%S"):
             try:

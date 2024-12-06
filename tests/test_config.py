@@ -19,22 +19,24 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config["backup"]["scope"]["mode"], "configured_roots")
         self.assertNotIn("Clarity", json.dumps(config))
 
-    def test_github_keep_requires_two_snapshots(self) -> None:
+    def test_github_keep_zero_is_valid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "config.json"
             path.write_text(
                 json.dumps(
                     {
                         "backup": {"roots": [], "scope": {"mode": "configured_roots"}},
-                        "retention": {"enabled": True, "retain_days": 60},
-                        "storage": {"github": {"keep_latest_snapshots": 1}},
+                        "retention": {"enabled": True, "retain_days": 30},
+                        "storage": {"github": {"keep_latest_snapshots": 0}},
                     }
                 ),
                 encoding="utf-8",
             )
 
-            with self.assertRaises(ValueError):
-                load_config(path)
+            config = load_config(path)
+            self.assertEqual(
+                config.get("storage", {}).get("github", {}).get("keep_latest_snapshots"), 0
+            )
 
 
 ROOT_PAGE_ID = "351733f6-271e-811f-bd0f-fd7b50bb8cfa"
