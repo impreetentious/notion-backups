@@ -518,16 +518,19 @@ def _is_linked_view_error(exc: NotionApiError) -> bool:
 
 
 def _write_manifest_with_size(snapshot_dir: Path, manifest: dict[str, Any]) -> None:
+    """Write the snapshot manifest once, after computing its total size."""
     manifest_path = snapshot_dir / "manifest.json"
-    previous_size = -1
-    for _ in range(5):
-        write_json(manifest_path, manifest)
-        current_size = sum(child.stat().st_size for child in snapshot_dir.rglob("*") if child.is_file())
-        manifest["size_bytes"] = current_size
-        manifest["size_human"] = _format_bytes(current_size)
-        if current_size == previous_size:
-            break
-        previous_size = current_size
+
+    # compute size of all files in the snapshot (including metadata + markdown + archives)
+    total_bytes = sum(child.stat().st_size for child in snapshot_dir.rglob("*") if child.is_file())
+
+    manifest.update(
+        {
+            "size_bytes": total_bytes,
+            "size_human": _format_bytes(total_bytes),
+        }
+    )
+
     write_json(manifest_path, manifest)
 
 

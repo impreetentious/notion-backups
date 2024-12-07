@@ -80,15 +80,6 @@ jobs:
           set -euo pipefail
           python scripts/backup_notion.py --config "$BACKUP_CONFIG"
 
-      - name: Archive snapshots to Google Drive
-        if: success()
-        run: |
-          set -euo pipefail
-          python scripts/manage_storage.py \
-            --config "$BACKUP_CONFIG" \
-            --current-snapshot "${{ steps.backup.outputs.snapshot_dir }}" \
-            --summary-file storage-summary.json
-
       - name: Notify success
         if: success()
         env:
@@ -107,6 +98,14 @@ jobs:
             --manifest "${{ steps.backup.outputs.manifest_path }}" \
             --message "Notion backup completed."
 
+      - name: Archive snapshots to Google Drive
+        if: success()
+        run: |
+          set -euo pipefail
+          python scripts/manage_storage.py \
+            --config "$BACKUP_CONFIG" \
+            --current-snapshot "${{ steps.backup.outputs.snapshot_dir }}" \
+            --summary-file storage-summary.json
       - name: Notify failure
         if: failure()
         env:

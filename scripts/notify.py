@@ -61,6 +61,12 @@ def _payload(status: str, message: str, base_url: str, manifest: dict[str, Any])
         ZoneInfo("Asia/Kolkata")
     )
 
+    # Determine human‑readable backup size, with a fallback to bytes if missing.
+    backup_size = (
+        manifest.get("size_human")
+        or (f"{manifest.get('size_bytes')} B" if manifest.get('size_bytes') else "")
+    )
+
     return {
         "service": "notion-backup",
         "status": effective_status,
@@ -72,7 +78,7 @@ def _payload(status: str, message: str, base_url: str, manifest: dict[str, Any])
         "timestamp": backup_dt.strftime("%d-%m-%Y_%H:%M:%S_%Z"),
         "backup_version": f"NB_v{backup_dt.strftime('%Y.%m.%d')}",
         "format_version": manifest.get("format_version") or manifest.get("format", {}).get("version", ""),
-        "backup_size": manifest.get("size_human", ""),
+        "backup_size": backup_size,
         "backup_size_bytes": manifest.get("size_bytes", ""),
         "storage_destination": "GitHub + Drive",
         "warnings": warnings,
