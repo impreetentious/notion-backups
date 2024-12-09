@@ -57,6 +57,7 @@ jobs:
       - name: Install dependencies
         run: |
           set -euo pipefail
+          python -m pip install --upgrade pip
           sudo apt-get update
           sudo apt-get install -y rclone
 
@@ -66,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${RCLONE_CONFIG_B64:-}" ]; then
-            echo "RCLONE_CONFIG_B64 is not set; older backups will stay on GitHub and the run will report a storage warning."
+            echo "RCLONE_CONFIG_B64 is not set; snapshots cannot be archived to Google Drive and the run will report a storage warning."
             exit 0
           fi
           mkdir -p "$HOME/.config/rclone"
@@ -79,6 +80,15 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/backup_notion.py --config "$BACKUP_CONFIG"
+
+      - name: Archive snapshots to Google Drive
+        if: success()
+        run: |
+          set -euo pipefail
+          python scripts/manage_storage.py \
+            --config "$BACKUP_CONFIG" \
+            --current-snapshot "${{ steps.backup.outputs.snapshot_dir }}" \
+            --summary-file storage-summary.json
 
       - name: Notify success
         if: success()
@@ -96,16 +106,8 @@ jobs:
             --config "$BACKUP_CONFIG" \
             --status success \
             --manifest "${{ steps.backup.outputs.manifest_path }}" \
+            --storage-summary storage-summary.json \
             --message "Notion backup completed."
-
-      - name: Archive snapshots to Google Drive
-        if: success()
-        run: |
-          set -euo pipefail
-          python scripts/manage_storage.py \
-            --config "$BACKUP_CONFIG" \
-            --current-snapshot "${{ steps.backup.outputs.snapshot_dir }}" \
-            --summary-file storage-summary.json
       - name: Notify failure
         if: failure()
         env:

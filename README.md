@@ -4,13 +4,13 @@ Private, automated cron-based backup system for exporting Notion snapshots.
 
 ## What It Does
 
-- Runs automatically every Monday and Friday at `02:00 IST`.
+- Runs automatically every Monday and Friday at `00:30 IST`.
 - Keeps a manual GitHub Actions trigger.
 - Reads from Notion only. It never creates, edits, moves, archives or deletes Notion content.
 - Writes restore-oriented snapshots into `exports/`.
-- Keeps only the latest backup and the one before it in GitHub.
-- Uploads older backups to Google Drive as `tar.gz` archives when Drive is configured.
-- Retains at least 60 days of external archives by default.
+- Uploads snapshots to Google Drive as `tar.gz` archives when Drive is configured.
+- Retains `0` committed backup snapshots in GitHub in the current production model.
+- Retains at least 30 days of external archives by default.
 - Uses a hybrid restore format: Markdown for page content, JSON for raw Notion metadata/databases and `manifest.json` for restore mapping.
 - Records status, size, format version, timestamp, storage destination, warnings and errors in each manifest.
 
@@ -36,7 +36,7 @@ Optional repository variable:
 
 ## Schedule
 
-The workflow cron is in `.github/workflows/notion-backup-production.yml`:
+The workflow cron is in `.github/workflows/notion-backup.yml`:
 
 ```yaml
 - cron: "00 19 * * 0,4"
@@ -54,8 +54,8 @@ Use **Actions -> Notion Backup -> Run Workflow** for a manual run.
 4. The runner reads Notion pages/databases through read-oriented API calls.
 5. A versioned snapshot is written under `exports/NB_YYYYMMDD_HHMMSS+0530/`.
 6. The manifest records status, size, format version, timestamp, warnings/errors, restore map and storage metadata.
-7. `scripts/manage_storage.py` uploads backups older than T-1 to Google Drive, then removes those expanded folders from GitHub.
-8. GitHub Actions commits the latest active snapshots and sends status notifications.
+7. `scripts/manage_storage.py` updates the final manifest with archive status and sends snapshots to Google Drive.
+8. GitHub Actions sends notifications after the final manifest has the completed size and storage details.
 
 ## Google Drive Setup
 
@@ -72,9 +72,9 @@ base64 -i ~/.config/rclone/rclone.conf
 
 5. Add the resulting value as the GitHub secret `RCLONE_CONFIG_B64`.
 
-Older snapshots are uploaded to `notionbackups:NotionBackups/`. Remote archives older than 60 days are deleted automatically when rclone can list and delete them.
+Snapshots are uploaded to `notionbackups:NotionBackups/`. Remote archives older than 30 days are deleted automatically when rclone can list and delete them.
 
-If Drive is not configured, the backup still runs, GitHub keeps the snapshots and the notification reports a storage warning.
+If Drive is not configured, the backup still runs, the local workflow snapshot remains unarchived, and the notification reports a storage warning.
 
 ## Backup Format
 

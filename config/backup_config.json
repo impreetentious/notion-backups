@@ -52,7 +52,7 @@
     "min_snapshots": 2
   },
   "storage": {
-    "primary": "github",
+    "primary": "google_drive",
     "github": {
       "keep_latest_snapshots": 0,
       "description": "No snapshots retained in GitHub; all are archived externally."

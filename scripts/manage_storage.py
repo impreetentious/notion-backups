@@ -30,6 +30,7 @@ def main() -> int:
             "deleted_from_github": result.deleted_from_github,
             "warnings": result.warnings,
             "errors": result.errors,
+            "manifest": result.current_manifest,
         }
         if args.summary_file:
             summary_path = Path(args.summary_file)

@@ -2,10 +2,57 @@ from __future__ import annotations
 
 import unittest
 
-from notify import _email_body, _payload
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from notify import _email_body, _payload, _resolve_manifest
 
 
 class NotifyStatusTests(unittest.TestCase):
+    def test_success_payload_uses_manifest_size_and_google_drive_label(self) -> None:
+        payload = _payload(
+            "success",
+            "Notion backup completed.",
+            "",
+            {
+                "status": "success",
+                "created_at": "2026-05-29T02:34:46+05:30",
+                "size_bytes": 4096,
+                "size_human": "4.00 KB",
+                "warnings": [],
+                "errors": [],
+                "storage": {
+                    "destination": "github+google_drive",
+                    "warnings": [],
+                    "errors": [],
+                },
+            },
+            {
+                "storage": {
+                    "github": {"keep_latest_snapshots": 0},
+                    "external_archive": {"enabled": True},
+                }
+            },
+        )
+
+        self.assertEqual(payload["backup_size"], "4.00 KB")
+        self.assertEqual(payload["storage_destination"], "Google Drive archive only (0 snapshots retained in GitHub)")
+        body = _email_body(payload)
+        self.assertIn("Size: 4.00 KB", body)
+        self.assertIn("Storage: Google Drive archive only (0 snapshots retained in GitHub)", body)
+
+    def test_resolve_manifest_falls_back_to_storage_summary(self) -> None:
+        with TemporaryDirectory() as tmp:
+            summary_path = Path(tmp) / "storage-summary.json"
+            summary_path.write_text(
+                '{"manifest":{"size_human":"4.00 KB","status":"success","storage":{"destination":"github+google_drive"}}}',
+                encoding="utf-8",
+            )
+
+            manifest = _resolve_manifest(None, str(summary_path))
+            self.assertEqual(manifest["size_human"], "4.00 KB")
+            self.assertEqual(manifest["storage"]["destination"], "github+google_drive")
+
     def test_storage_errors_make_notification_failed(self) -> None:
         payload = _payload(
             "success",

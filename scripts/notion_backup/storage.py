@@ -25,6 +25,7 @@ class StorageResult:
     deleted_from_github: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    current_manifest: dict[str, Any] = field(default_factory=dict)
 
 
 def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = None) -> StorageResult:
@@ -154,6 +155,7 @@ def _update_current_manifest(current_snapshot_dir: Path | None, result: StorageR
     }
     manifest["size_bytes"] = _directory_size_bytes(current_snapshot_dir)
     manifest["size_human"] = _format_bytes(int(manifest["size_bytes"]))
+    result.current_manifest = manifest
     write_json(manifest_path, manifest)
 
 

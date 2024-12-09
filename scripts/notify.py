@@ -23,11 +23,12 @@ def main() -> int:
     parser.add_argument("--run-url", default=os.getenv("GITHUB_SERVER_URL", ""))
     parser.add_argument("--message", default="")
     parser.add_argument("--manifest", default=None)
+    parser.add_argument("--storage-summary", default=None)
     args = parser.parse_args()
 
     config = load_config(args.config)
-    manifest = _load_manifest(args.manifest)
-    payload = _payload(args.status, args.message, args.run_url, manifest)
+    manifest = _resolve_manifest(args.manifest, args.storage_summary)
+    payload = _payload(args.status, args.message, args.run_url, manifest, config)
 
     failures = 0
     for channel in config.get("notifications", {}).get("channels", []):
@@ -47,7 +48,13 @@ def main() -> int:
     return 1 if failures else 0
 
 
-def _payload(status: str, message: str, base_url: str, manifest: dict[str, Any]) -> dict[str, Any]:
+def _payload(
+    status: str,
+    message: str,
+    base_url: str,
+    manifest: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     manifest_status = manifest.get("status")
     warnings = manifest.get("warnings", []) + manifest.get("storage", {}).get("warnings", [])
     errors = manifest.get("errors", []) + manifest.get("storage", {}).get("errors", [])
@@ -80,10 +87,30 @@ def _payload(status: str, message: str, base_url: str, manifest: dict[str, Any])
         "format_version": manifest.get("format_version") or manifest.get("format", {}).get("version", ""),
         "backup_size": backup_size,
         "backup_size_bytes": manifest.get("size_bytes", ""),
-        "storage_destination": "GitHub + Drive",
+        "storage_destination": _storage_destination_label(manifest, config or {}),
         "warnings": warnings,
         "errors": errors,
     }
+
+
+def _storage_destination_label(manifest: dict[str, Any], config: dict[str, Any]) -> str:
+    destination = str(manifest.get("storage", {}).get("destination", "")).strip().lower()
+    github_keep = int(config.get("storage", {}).get("github", {}).get("keep_latest_snapshots", 0))
+    external_enabled = bool(config.get("storage", {}).get("external_archive", {}).get("enabled", False))
+
+    if destination == "github+google_drive":
+        if github_keep == 0:
+            return "Google Drive archive only (0 snapshots retained in GitHub)"
+        return f"GitHub + Google Drive ({github_keep} snapshot(s) retained in GitHub)"
+    if destination == "github":
+        if external_enabled and github_keep == 0:
+            return "GitHub temporary staging only; archival to Google Drive is pending or warning"
+        if external_enabled:
+            return f"GitHub + Google Drive ({github_keep} snapshot(s) retained in GitHub)"
+        return "GitHub only"
+    if external_enabled and github_keep == 0:
+        return "Google Drive archive only (0 snapshots retained in GitHub)"
+    return "unknown"
 
 
 def _notification_status(
@@ -129,6 +156,20 @@ def _load_manifest(path: str | None) -> dict[str, Any]:
         return json.load(handle)
 
 
+def _resolve_manifest(manifest_path: str | None, summary_path: str | None) -> dict[str, Any]:
+    manifest = _load_manifest(manifest_path)
+    if manifest:
+        return manifest
+    if not summary_path:
+        return {}
+    summary_file = Path(summary_path)
+    if not summary_file.exists():
+        return {}
+    with summary_file.open("r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+    return summary.get("manifest", {}) if isinstance(summary, dict) else {}
+
+
 def _write_step_summary(payload: dict[str, Any]) -> None:
     summary_path = os.getenv("GITHUB_STEP_SUMMARY")
     lines = [
@@ -146,7 +187,7 @@ def _write_step_summary(payload: dict[str, Any]) -> None:
     line = "\n".join(lines)
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as handle:
-            handle.write(line)
+            handle.write(line + "\n")
     else:
         print(line)
 
