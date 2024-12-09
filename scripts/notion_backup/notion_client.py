@@ -28,32 +28,35 @@ class NotionApiError(RuntimeError):
 
 class _RateLimiter:
 
-    def __init__(self, requests_per_second: float) -> None:
+    def __init__(self, requests_per_second: float, burst: int = 3) -> None:
         if requests_per_second <= 0:
             raise ValueError("requests_per_second must be positive")
-        self._min_interval = 1.0 / requests_per_second
+        if burst < 1:
+            raise ValueError("burst must be at least 1")
+        self._rate = requests_per_second
+        self._capacity = float(burst)
+        self._tokens = float(burst)
         self._lock = threading.Lock()
-        self._next_allowed_time: float | None = None
+        self._last_refill = time.monotonic()
 
-    def wait(self) -> None:
-        with self._lock:
-            now = time.monotonic()
-            next_allowed = self._next_allowed_time
-            if next_allowed is None or now >= next_allowed:
-                self._next_allowed_time = now + self._min_interval
-                return
-            self._next_allowed_time = next_allowed + self._min_interval
-            sleep_for = next_allowed - now
-        time.sleep(sleep_for)
+    def wait(self) -> float:
+        total_sleep = 0.0
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                elapsed = now - self._last_refill
+                self._last_refill = now
+                self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return total_sleep
+                deficit = 1.0 - self._tokens
+                sleep_for = deficit / self._rate
+            time.sleep(sleep_for)
+            total_sleep += sleep_for
 
 
 class NotionClient:
-    """Small read-only Notion API client.
-
-    The Notion API uses POST for some read operations such as search and
-    database queries. This client intentionally exposes only retrieval,
-    listing, search and query operations.
-    """
 
     BASE_URL = "https://api.notion.com/v1"
 
@@ -67,6 +70,7 @@ class NotionClient:
         retry_initial_sleep_seconds: float = 2.0,
         retry_max_sleep_seconds: float = 120.0,
         requests_per_second: float = 2.5,
+        burst: int = 3,
     ) -> None:
         self.token = token or os.getenv("NOTION_TOKEN")
         if not self.token:
@@ -78,7 +82,11 @@ class NotionClient:
         self.retry_initial_sleep_seconds = retry_initial_sleep_seconds
         self.retry_max_sleep_seconds = retry_max_sleep_seconds
         self.requests_per_second = requests_per_second
-        self._rate_limiter = _RateLimiter(requests_per_second)
+        self.burst = burst
+        self._rate_limiter = _RateLimiter(requests_per_second, burst=burst)
+        self.total_requests = 0
+        self.total_rate_limit_wait_seconds = 0.0
+        self.total_retry_wait_seconds = 0.0
 
     def retrieve_page(self, page_id: str) -> dict[str, Any]:
         return self._request("GET", f"/pages/{page_id}")
@@ -163,7 +171,8 @@ class NotionClient:
             data = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
         for attempt in range(1, self.max_retries + 1):
-            self._rate_limiter.wait()
+            self.total_requests += 1
+            self.total_rate_limit_wait_seconds += self._rate_limiter.wait()
             try:
                 req = request.Request(url, data=data, headers=headers, method=method)
                 with request.urlopen(req, timeout=self.timeout_seconds) as response:
@@ -181,6 +190,7 @@ class NotionClient:
                             exc.code,
                             sleep_for,
                         )
+                        self.total_retry_wait_seconds += sleep_for
                         time.sleep(sleep_for)
                         continue
                 raise NotionApiError(
@@ -199,6 +209,7 @@ class NotionClient:
                         self.timeout_seconds,
                         sleep_for,
                     )
+                    self.total_retry_wait_seconds += sleep_for
                     time.sleep(sleep_for)
                     continue
                 raise NotionApiError(
@@ -214,6 +225,7 @@ class NotionClient:
                         exc.reason,
                         sleep_for,
                     )
+                    self.total_retry_wait_seconds += sleep_for
                     time.sleep(sleep_for)
                     continue
                 raise NotionApiError(f"Notion API {method} {path} failed: {exc.reason}") from exc

@@ -2,6 +2,7 @@
   "format_version": "2.2.0",
   "notion": {
     "api_version": "2022-06-28",
+    "burst": 3,
     "max_retries": 8,
     "page_size": 100,
     "requests_per_second": 2.5,

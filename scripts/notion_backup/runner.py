@@ -148,12 +148,16 @@ class BackupRunner:
             LOGGER.info("Retention removed %d expired paths", len(deleted))
 
         LOGGER.info(
-            "Backup complete: pages=%d databases=%d rows=%d blocks=%d snapshot=%s",
+            "Backup complete: pages=%d databases=%d rows=%d blocks=%d snapshot=%s "
+            "notion_requests=%d pacing_wait_s=%.1f retry_wait_s=%.1f",
             self.counts["pages"],
             self.counts["databases"],
             self.counts["database_rows"],
             self.counts["blocks"],
             snapshot_dir,
+            getattr(self.client, "total_requests", 0),
+            getattr(self.client, "total_rate_limit_wait_seconds", 0.0),
+            getattr(self.client, "total_retry_wait_seconds", 0.0),
         )
         return snapshot_dir
 
@@ -443,6 +447,7 @@ def run_backup(config_path: str | None = None) -> Path:
         retry_initial_sleep_seconds=float(notion.get("retry_initial_sleep_seconds", 2)),
         retry_max_sleep_seconds=float(notion.get("retry_max_sleep_seconds", 120)),
         requests_per_second=float(notion.get("requests_per_second", 2.5)),
+        burst=int(notion.get("burst", 3)),
     )
     return BackupRunner(config, client).run()
 
