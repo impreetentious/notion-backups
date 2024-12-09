@@ -30,6 +30,8 @@ def _apply_env_overrides(config: dict[str, Any]) -> None:
         notion["max_retries"] = int(os.environ["NOTION_MAX_RETRIES"])
     if os.getenv("NOTION_PAGE_SIZE"):
         notion["page_size"] = int(os.environ["NOTION_PAGE_SIZE"])
+    if os.getenv("NOTION_REQUESTS_PER_SECOND"):
+        notion["requests_per_second"] = float(os.environ["NOTION_REQUESTS_PER_SECOND"])
     if os.getenv("BACKUP_OUTPUT_DIR"):
         config.setdefault("backup", {})["output_dir"] = os.environ["BACKUP_OUTPUT_DIR"]
     if os.getenv("BACKUP_ARCHIVE_DIR"):

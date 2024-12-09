@@ -439,9 +439,10 @@ def run_backup(config_path: str | None = None) -> Path:
         notion_version=notion.get("api_version", "2022-06-28"),
         timeout_seconds=int(notion.get("timeout_seconds", 180)),
         max_retries=int(notion.get("max_retries", 8)),
-        page_size=int(notion.get("page_size", 50)),
+        page_size=int(notion.get("page_size", 100)),
         retry_initial_sleep_seconds=float(notion.get("retry_initial_sleep_seconds", 2)),
         retry_max_sleep_seconds=float(notion.get("retry_max_sleep_seconds", 120)),
+        requests_per_second=float(notion.get("requests_per_second", 2.5)),
     )
     return BackupRunner(config, client).run()
 

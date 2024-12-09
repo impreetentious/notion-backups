@@ -3,7 +3,8 @@
   "notion": {
     "api_version": "2022-06-28",
     "max_retries": 8,
-    "page_size": 50,
+    "page_size": 100,
+    "requests_per_second": 2.5,
     "retry_initial_sleep_seconds": 2,
     "retry_max_sleep_seconds": 120,
     "root_search_page_size": 25,

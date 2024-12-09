@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import socket
+import threading
 import time
 from typing import Any
 from urllib import error, parse, request
@@ -25,6 +26,27 @@ class NotionApiError(RuntimeError):
         self.response_text = response_text
 
 
+class _RateLimiter:
+
+    def __init__(self, requests_per_second: float) -> None:
+        if requests_per_second <= 0:
+            raise ValueError("requests_per_second must be positive")
+        self._min_interval = 1.0 / requests_per_second
+        self._lock = threading.Lock()
+        self._next_allowed_time: float | None = None
+
+    def wait(self) -> None:
+        with self._lock:
+            now = time.monotonic()
+            next_allowed = self._next_allowed_time
+            if next_allowed is None or now >= next_allowed:
+                self._next_allowed_time = now + self._min_interval
+                return
+            self._next_allowed_time = next_allowed + self._min_interval
+            sleep_for = next_allowed - now
+        time.sleep(sleep_for)
+
+
 class NotionClient:
     """Small read-only Notion API client.
 
@@ -41,9 +63,10 @@ class NotionClient:
         notion_version: str = "2022-06-28",
         timeout_seconds: int = 180,
         max_retries: int = 8,
-        page_size: int = 50,
+        page_size: int = 100,
         retry_initial_sleep_seconds: float = 2.0,
         retry_max_sleep_seconds: float = 120.0,
+        requests_per_second: float = 2.5,
     ) -> None:
         self.token = token or os.getenv("NOTION_TOKEN")
         if not self.token:
@@ -54,6 +77,8 @@ class NotionClient:
         self.page_size = min(max(page_size, 1), 100)
         self.retry_initial_sleep_seconds = retry_initial_sleep_seconds
         self.retry_max_sleep_seconds = retry_max_sleep_seconds
+        self.requests_per_second = requests_per_second
+        self._rate_limiter = _RateLimiter(requests_per_second)
 
     def retrieve_page(self, page_id: str) -> dict[str, Any]:
         return self._request("GET", f"/pages/{page_id}")
@@ -138,6 +163,7 @@ class NotionClient:
             data = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
         for attempt in range(1, self.max_retries + 1):
+            self._rate_limiter.wait()
             try:
                 req = request.Request(url, data=data, headers=headers, method=method)
                 with request.urlopen(req, timeout=self.timeout_seconds) as response:
