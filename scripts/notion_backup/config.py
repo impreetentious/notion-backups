@@ -40,7 +40,6 @@ def _apply_env_overrides(config: dict[str, Any]) -> None:
         value = os.environ["BACKUP_COMPRESSION_ENABLED"].strip().lower()
         config.setdefault("compression", {})["enabled"] = value in {"1", "true", "yes", "on"}
 
-
 def _validate_config(config: dict[str, Any], path: Path) -> None:
     backup = config.get("backup")
     if not isinstance(backup, dict):
@@ -75,7 +74,6 @@ def _validate_config(config: dict[str, Any], path: Path) -> None:
     github_keep = int(config.get("storage", {}).get("github", {}).get("keep_latest_snapshots", 0))
     if github_keep < 0:
         raise ValueError(f"{path}: storage.github.keep_latest_snapshots must be at least 0")
-
 
 def enabled_roots(config: dict[str, Any]) -> list[dict[str, Any]]:
     return [root for root in config.get("backup", {}).get("roots", []) if root.get("enabled", True)]

@@ -8,8 +8,7 @@ Private, automated cron-based backup system for exporting Notion snapshots.
 - Keeps a manual GitHub Actions trigger.
 - Reads from Notion only. It never creates, edits, moves, archives or deletes Notion content.
 - Writes restore-oriented snapshots into `exports/`.
-- Uploads snapshots to Google Drive as `tar.gz` archives when Drive is configured.
-- Retains `0` committed backup snapshots in GitHub in the current production model.
+- Uploads snapshots directly to Google Drive as `tar.gz` archives when Drive is configured.
 - Retains at least 30 days of external archives by default.
 - Uses a hybrid restore format: Markdown for page content, JSON for raw Notion metadata/databases and `manifest.json` for restore mapping.
 - Records status, size, format version, timestamp, storage destination, warnings and errors in each manifest.
@@ -110,16 +109,8 @@ Email contains:
 
 Webhook notifications are still available by enabling `generic_webhook` in `config/backup_config.json`.
 
-## Local Run
-
-```bash
-export NOTION_TOKEN="secret_..."
-python scripts/backup_notion.py --config config/backup_config.json
-python scripts/manage_storage.py --config config/backup_config.json --current-snapshot exports/<run-id>
-```
-
 ## Operational Notes
 
 Human intervention should only be needed for expired credentials, Notion API changes, quota/rate-limit issues or deliberate config changes.
 
-Secondary linked database view wrappers are recorded as `linked_database_view` manifest objects instead of warnings because they contain no unique row data and cannot be queried through Notion's public API. Genuine inaccessible child databases still surface as warnings. Fatal root resolution failures, root page metadata failures and config errors stop the run because there is no reliable root snapshot to commit.
+- Secondary linked database view wrappers are recorded as `linked_database_view` manifest objects instead of warnings because they contain no unique row data and cannot be queried through Notion's public API. Genuine inaccessible child databases still surface as warnings. Fatal root resolution failures, root page metadata failures and config errors stop the run because there is no reliable root snapshot to commit.

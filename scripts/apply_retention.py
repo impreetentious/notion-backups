@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -8,7 +7,6 @@ from pathlib import Path
 
 from notion_backup.config import load_config
 from notion_backup.retention import apply_retention
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Apply backup retention without creating a new snapshot.")
@@ -35,7 +33,6 @@ def main() -> int:
     except Exception:
         logging.exception("Retention failed")
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

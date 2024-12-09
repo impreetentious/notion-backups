@@ -7,7 +7,6 @@ from tempfile import TemporaryDirectory
 
 from notify import _email_body, _payload, _resolve_manifest
 
-
 class NotifyStatusTests(unittest.TestCase):
     def test_success_payload_uses_manifest_size_and_google_drive_label(self) -> None:
         payload = _payload(

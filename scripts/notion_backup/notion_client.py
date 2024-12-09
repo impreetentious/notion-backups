@@ -8,9 +8,7 @@ import time
 from typing import Any
 from urllib import error, parse, request
 
-
 LOGGER = logging.getLogger(__name__)
-
 
 class NotionApiError(RuntimeError):
     def __init__(
@@ -32,7 +30,7 @@ class NotionClient:
 
     The Notion API uses POST for some read operations such as search and
     database queries. This client intentionally exposes only retrieval,
-    listing, search, and query operations.
+    listing, search and query operations.
     """
 
     BASE_URL = "https://api.notion.com/v1"

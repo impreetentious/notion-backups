@@ -6,9 +6,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-
 LOGGER = logging.getLogger(__name__)
-
 
 def apply_retention(
     output_dir: Path,

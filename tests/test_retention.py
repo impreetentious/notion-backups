@@ -8,7 +8,6 @@ from pathlib import Path
 
 from notion_backup.retention import _created_at, _snapshot_dirs, apply_retention
 
-
 class RetentionTimestampTests(unittest.TestCase):
     def test_manifest_timestamp_with_timezone_normalizes_to_utc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

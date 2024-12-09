@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -9,7 +8,6 @@ from pathlib import Path
 
 from notion_backup.config import load_config
 from notion_backup.storage import manage_storage
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Archive older backups externally and keep GitHub small.")

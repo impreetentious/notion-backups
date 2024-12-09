@@ -3,8 +3,6 @@ name: Notion Backup
 on:
   workflow_dispatch: {}
   schedule:
-    # 12:30 IST every Monday and Friday.
-    # GitHub cron is UTC: 19:00 UTC Sunday and Thursday (IST = UTC+5:30).
     - cron: "00 19 * * 0,4"
 
 concurrency:
@@ -25,7 +23,7 @@ env:
 
 jobs:
   backup:
-    if: false
+    if: true
     name: "Monarch's Notion Backup"
     runs-on: ubuntu-latest
     timeout-minutes: 360

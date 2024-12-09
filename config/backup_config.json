@@ -1,5 +1,5 @@
 {
-  "format_version": "1.1.0",
+  "format_version": "2.2.0",
   "notion": {
     "api_version": "2022-06-28",
     "max_retries": 8,

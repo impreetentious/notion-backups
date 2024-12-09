@@ -1,6 +1,6 @@
 # Storage Policy
 
-Google Drive is the long-term archive layer. GitHub does not retain committed backup snapshots in the current production model.
+Google Drive is the long-term archive layer. GitHub does not retain any committed backup snapshots in the current production model.
 
 ## GitHub Layer
 

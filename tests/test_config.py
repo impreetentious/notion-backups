@@ -9,7 +9,6 @@ from notion_backup.config import enabled_roots, load_config
 from notion_backup.notion_client import NotionApiError
 from notion_backup.runner import BackupRunner
 
-
 class ConfigTests(unittest.TestCase):
     def test_configured_roots_are_the_three_master_pages(self) -> None:
         config = load_config("config/backup_config.json")

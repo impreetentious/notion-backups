@@ -2,7 +2,7 @@
 
 Format name: `notion-hybrid-backup`
 
-Current version: `1.2.0`
+Current version: `2.2.0`
 
 This repository treats the backup format as a stable restore contract. Future incompatible changes should create a new version and keep readers for old versions.
 

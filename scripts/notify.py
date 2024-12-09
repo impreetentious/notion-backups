@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -14,7 +13,6 @@ from typing import Any
 from urllib import error, request
 
 from notion_backup.config import load_config
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Send backup status notifications.")
@@ -47,7 +45,6 @@ def main() -> int:
 
     return 1 if failures else 0
 
-
 def _payload(
     status: str,
     message: str,
@@ -68,7 +65,6 @@ def _payload(
         ZoneInfo("Asia/Kolkata")
     )
 
-    # Determine human‑readable backup size, with a fallback to bytes if missing.
     backup_size = (
         manifest.get("size_human")
         or (f"{manifest.get('size_bytes')} B" if manifest.get('size_bytes') else "")
@@ -91,7 +87,6 @@ def _payload(
         "warnings": warnings,
         "errors": errors,
     }
-
 
 def _storage_destination_label(manifest: dict[str, Any], config: dict[str, Any]) -> str:
     destination = str(manifest.get("storage", {}).get("destination", "")).strip().lower()

@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from notion_backup.storage import manage_storage
 
-
 class StorageTests(unittest.TestCase):
     def test_external_disabled_keeps_older_snapshots_and_warns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -117,7 +116,6 @@ class StorageTests(unittest.TestCase):
 
 def _created_at_from_name(name: str) -> str:
     return f"{name[3:7]}-{name[7:9]}-{name[9:11]}T{name[12:14]}:{name[14:16]}:{name[16:18]}{name[18:]}"
-
 
 if __name__ == "__main__":
     unittest.main()

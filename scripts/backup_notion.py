@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -8,7 +7,6 @@ import os
 import sys
 
 from notion_backup.runner import run_backup
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a read-only Notion backup snapshot.")

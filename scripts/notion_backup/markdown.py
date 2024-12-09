@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 def page_title(page: dict[str, Any]) -> str:
     properties = page.get("properties", {})
     for prop in properties.values():

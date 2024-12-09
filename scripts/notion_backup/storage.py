@@ -12,9 +12,7 @@ from typing import Any
 from .retention import _snapshot_dirs
 from .writer import create_tar_gz, write_json
 
-
 LOGGER = logging.getLogger(__name__)
-
 
 @dataclass
 class StorageResult:

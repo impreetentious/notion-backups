@@ -16,9 +16,7 @@ from .notion_client import NotionApiError, NotionClient, normalize_id
 from .retention import apply_retention
 from .writer import create_tar_gz, write_json, write_text
 
-
 LOGGER = logging.getLogger(__name__)
-
 
 @dataclass(frozen=True)
 class QueueItem:
@@ -28,7 +26,6 @@ class QueueItem:
     title: str = ""
     parent: dict[str, Any] | None = None
     owner_id: str | None = None
-
 
 class BackupRunner:
     def __init__(self, config: dict[str, Any], client: NotionClient) -> None:
