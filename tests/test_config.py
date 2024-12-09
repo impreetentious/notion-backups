@@ -10,11 +10,20 @@ from notion_backup.notion_client import NotionApiError
 from notion_backup.runner import BackupRunner
 
 class ConfigTests(unittest.TestCase):
-    def test_configured_roots_are_the_three_master_pages(self) -> None:
+    def test_configured_roots_are_the_five_master_pages(self) -> None:
         config = load_config("config/backup_config.json")
         roots = enabled_roots(config)
 
-        self.assertEqual([root["title"] for root in roots], ["Sage Sanctuary 🌿", "Command Centre 🚀", "Ground Zero 🌪️"])
+        self.assertEqual(
+            [root["title"] for root in roots],
+            [
+                "Sage Sanctuary 🌿",
+                "Command Centre 🚀",
+                "Ground Zero 🌪️",
+                "Second Brain ⭐️",
+                "Master Control ⚡️",
+            ],
+        )
         self.assertEqual(config["backup"]["scope"]["mode"], "configured_roots")
         self.assertNotIn("Clarity", json.dumps(config))
 

@@ -89,22 +89,16 @@ def _payload(
     }
 
 def _storage_destination_label(manifest: dict[str, Any], config: dict[str, Any]) -> str:
-    destination = str(manifest.get("storage", {}).get("destination", "")).strip().lower()
-    github_keep = int(config.get("storage", {}).get("github", {}).get("keep_latest_snapshots", 0))
-    external_enabled = bool(config.get("storage", {}).get("external_archive", {}).get("enabled", False))
-
-    if destination == "github+google_drive":
-        if github_keep == 0:
-            return "Google Drive archive only (0 snapshots retained in GitHub)"
-        return f"GitHub + Google Drive ({github_keep} snapshot(s) retained in GitHub)"
-    if destination == "github":
-        if external_enabled and github_keep == 0:
-            return "GitHub temporary staging only; archival to Google Drive is pending or warning"
-        if external_enabled:
-            return f"GitHub + Google Drive ({github_keep} snapshot(s) retained in GitHub)"
+    external_enabled = bool(
+        config.get("storage", {}).get("external_archive", {}).get("enabled", False)
+    )
+    if not external_enabled:
         return "GitHub only"
-    if external_enabled and github_keep == 0:
-        return "Google Drive archive only (0 snapshots retained in GitHub)"
+    dest = manifest.get("storage", {}).get("destination", "").lower()
+    if dest.startswith("github+google_drive"):
+        return "Google Drive"
+    elif dest == "github":
+        return "GitHub only"
     return "unknown"
 
 

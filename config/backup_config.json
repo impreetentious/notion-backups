@@ -43,6 +43,20 @@
         "title": "Ground Zero \ud83c\udf2a\ufe0f",
         "top_level_only": true,
         "enabled": true
+      },
+      {
+        "type": "page",
+        "id": "a73733f6-271e-83ea-957d-81337b6a4504",
+        "title": "Second Brain \u2b50\ufe0f",
+        "top_level_only": true,
+        "enabled": true
+      },
+      {
+        "type": "page",
+        "id": "422aa921-ca72-40d2-9981-6ef12f195888",
+        "title": "Master Control \u26a1\ufe0f",
+        "top_level_only": true,
+        "enabled": true
       }
     ]
   },
@@ -53,10 +67,6 @@
   },
   "storage": {
     "primary": "google_drive",
-    "github": {
-      "keep_latest_snapshots": 0,
-      "description": "No snapshots retained in GitHub; all are archived externally."
-    },
     "external_archive": {
       "enabled": true,
       "provider": "google_drive",
@@ -65,7 +75,7 @@
       "folder": "NotionBackups",
       "retention_days": 30,
       "delete_remote_older_than_retention": true,
-      "description": "Snapshots are uploaded to Google Drive as tar.gz archives and removed from GitHub."
+      "description": "Snapshots are uploaded to Google Drive as tar.gz archives"
     }
   },
   "compression": {

@@ -25,20 +25,15 @@ class StorageResult:
     errors: list[str] = field(default_factory=list)
     current_manifest: dict[str, Any] = field(default_factory=dict)
 
-
 def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = None) -> StorageResult:
     backup = config.get("backup", {})
     storage = config.get("storage", {})
     output_dir = Path(backup.get("output_dir", "exports"))
     archive_dir = Path(backup.get("archive_dir", "archives"))
-    github_keep = int(storage.get("github", {}).get("keep_latest_snapshots", 2))
+
     snapshots = _snapshot_dirs(output_dir)
-    if github_keep < 1:
-        retained = []
-        candidates = snapshots[:]
-    else:
-        retained = snapshots[-github_keep:]
-        candidates = snapshots[: max(len(snapshots) - len(retained), 0)]
+    retained: list[Path] = []
+    candidates: list[Path] = snapshots
 
     external = storage.get("external_archive", {})
     result = StorageResult(
@@ -82,7 +77,7 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
             result.errors.append(upload.stderr.strip() or upload.stdout.strip() or f"rclone exited {upload.returncode}")
             continue
         result.uploaded_to_external.append(remote_path)
-        # Update manifest with storage info before deleting the snapshot
+        result.destination = "github+google_drive"
         _update_current_manifest(snapshot.path, result)
         shutil.rmtree(snapshot.path)
         result.deleted_from_github.append(snapshot.path.as_posix())
@@ -91,7 +86,6 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
     _cleanup_external_archives(config, result)
     result.destination = "github+google_drive" if result.uploaded_to_external else "github"
     return result
-
 
 def _cleanup_external_archives(config: dict[str, Any], result: StorageResult) -> None:
     external = config.get("storage", {}).get("external_archive", {})
@@ -133,7 +127,6 @@ def _cleanup_external_archives(config: dict[str, Any], result: StorageResult) ->
         if delete_result.returncode:
             result.warnings.append(f"Could not delete expired external archive {name}.")
 
-
 def _update_current_manifest(current_snapshot_dir: Path | None, result: StorageResult) -> None:
     if not current_snapshot_dir:
         return
@@ -156,10 +149,8 @@ def _update_current_manifest(current_snapshot_dir: Path | None, result: StorageR
     result.current_manifest = manifest
     write_json(manifest_path, manifest)
 
-
 def _directory_size_bytes(path: Path) -> int:
     return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
-
 
 def _format_bytes(size: int) -> str:
     units = ["B", "KB", "MB", "GB"]
@@ -171,7 +162,6 @@ def _format_bytes(size: int) -> str:
             return f"{value:.2f} {unit}"
         value /= 1024
     return f"{size} B"
-
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     LOGGER.info("Running storage command: %s", " ".join(command[:2]))
