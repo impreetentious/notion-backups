@@ -101,7 +101,7 @@ def _block_to_lines(block: dict[str, Any], depth: int, index: int) -> list[str]:
     if block_type == "table":
         return [f"{indent}[Table block preserved in JSON: `{block.get('id')}`]"]
     if block_type == "table_row":
-        cells = [" ".join(rich_text_to_markdown(cell) for cell in data.get("cells", []))]
+        cells = [rich_text_to_markdown(cell) for cell in data.get("cells", [])]
         return [f"{indent}| {' | '.join(cells)} |"]
 
     return [f"{indent}[Unsupported Notion block `{block_type}` preserved in JSON: `{block.get('id')}`]"]

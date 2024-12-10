@@ -50,6 +50,7 @@ NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz
 - `errors`
 - `objects`
 - `restore_map`
+- `counts_by_root`
 
 `status` is `warning` when recoverable traversal issues occurred and `partial` when an object had to be skipped as an error. Linked database view wrappers do not change `status` by themselves.
 
@@ -59,6 +60,7 @@ NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz
 - `manifest.json.restore_map` maps original Notion IDs to file paths and parent metadata.
 - `manifest.json.complete` is `false` when recoverable traversal warnings or object errors occurred.
 - `counts.linked_views` records secondary linked database view wrappers that Notion exposes as `child_database` blocks but does not allow the API to query directly.
+- `counts_by_root` breaks down `pages`, `databases`, `database_rows`, and `blocks` per configured root, keyed by root title, so relative crawl cost per root is visible without recomputing it from `objects`.
 - `linked_database_view` objects preserve wrapper metadata and a small `view_reference.json` artifact for restore/manual reconstruction reference.
 - Page Markdown is for human-readable recovery and migration.
 - Page/database JSON is the authoritative restore source because it preserves the raw API objects.

@@ -32,8 +32,13 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
     archive_dir = Path(backup.get("archive_dir", "archives"))
 
     snapshots = _snapshot_dirs(output_dir)
-    retained: list[Path] = []
-    candidates: list[Path] = snapshots
+    keep_latest = int(storage.get("github", {}).get("keep_latest_snapshots", 0))
+    if keep_latest > 0:
+        retained = snapshots[-keep_latest:]
+        candidates = snapshots[:-keep_latest]
+    else:
+        retained = []
+        candidates = snapshots
 
     external = storage.get("external_archive", {})
     result = StorageResult(

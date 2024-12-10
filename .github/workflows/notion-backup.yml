@@ -17,9 +17,6 @@ env:
   BACKUP_CONFIG: config/backup_config.json
   RETENTION_DAYS: "30"
   BACKUP_COMPRESSION_ENABLED: "false"
-  NOTION_REQUEST_TIMEOUT_SECONDS: "180"
-  NOTION_MAX_RETRIES: "8"
-  NOTION_PAGE_SIZE: "50"
 
 jobs:
   backup:

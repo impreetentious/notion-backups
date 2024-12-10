@@ -95,8 +95,9 @@ def _storage_destination_label(manifest: dict[str, Any], config: dict[str, Any])
     if not external_enabled:
         return "GitHub only"
     dest = manifest.get("storage", {}).get("destination", "").lower()
+    keep_latest = int(config.get("storage", {}).get("github", {}).get("keep_latest_snapshots", 0))
     if dest.startswith("github+google_drive"):
-        return "Google Drive"
+        return f"Google Drive archive only ({keep_latest} snapshots retained in GitHub)"
     elif dest == "github":
         return "GitHub only"
     return "unknown"

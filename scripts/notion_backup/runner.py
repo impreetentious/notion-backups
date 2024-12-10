@@ -254,7 +254,7 @@ class BackupRunner:
     def _discover_top_level_pages(self) -> list[QueueItem]:
         LOGGER.info("Discovering all top-level Notion pages accessible to the integration")
         roots: list[QueueItem] = []
-        for candidate in self.client.search_pages("", page_size=int(self.config.get("notion", {}).get("page_size", 50))):
+        for candidate in self.client.search_pages("", page_size=int(self.config.get("notion", {}).get("page_size", 100))):
             candidate_id = candidate.get("id")
             if not candidate_id:
                 continue
@@ -262,7 +262,7 @@ class BackupRunner:
             if page.get("parent", {}).get("type") != "workspace":
                 continue
             self.preloaded_pages[normalize_id(candidate_id)] = page
-            roots.append(QueueItem("page", candidate_id, "top_level_discovery"))
+            roots.append(QueueItem("page", candidate_id, "top_level_discovery", root_title=page_title(page)))
         roots.sort(key=lambda item: normalize_id(item.object_id))
         LOGGER.info("Discovered %d top-level Notion page roots", len(roots))
         return roots
@@ -551,10 +551,8 @@ def _is_linked_view_error(exc: NotionApiError) -> bool:
 
 
 def _write_manifest_with_size(snapshot_dir: Path, manifest: dict[str, Any]) -> None:
-    """Write the snapshot manifest once, after computing its total size."""
     manifest_path = snapshot_dir / "manifest.json"
 
-    # compute size of all files in the snapshot (including metadata + markdown + archives)
     total_bytes = sum(child.stat().st_size for child in snapshot_dir.rglob("*") if child.is_file())
 
     manifest.update(
