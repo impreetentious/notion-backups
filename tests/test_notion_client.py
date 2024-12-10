@@ -22,7 +22,6 @@ class RateLimiterTests(unittest.TestCase):
     @patch("notion_backup.notion_client.time.sleep")
     @patch("notion_backup.notion_client.time.monotonic")
     def test_burst_capacity_allows_that_many_calls_with_no_wait(self, monotonic_mock, sleep_mock) -> None:
-        
         monotonic_mock.return_value = 100.0
         limiter = _RateLimiter(requests_per_second=2.0, burst=3)
 
@@ -35,11 +34,11 @@ class RateLimiterTests(unittest.TestCase):
     @patch("notion_backup.notion_client.time.monotonic")
     def test_call_beyond_burst_waits_for_one_token_to_refill(self, monotonic_mock, sleep_mock) -> None:
         monotonic_mock.side_effect = [
-            100.0, 
-            100.0, 
             100.0,  
-            100.0, 
-            100.5, 
+            100.0,  
+            100.0,  
+            100.0,  
+            100.5,  
         ]
         limiter = _RateLimiter(requests_per_second=2.0, burst=2)
 
@@ -58,9 +57,9 @@ class RateLimiterTests(unittest.TestCase):
             100.0, 
             100.0,  
             100.0,  
-            100.0, 
-            102.0,  
-            102.0,  
+            100.0,  
+            102.0, 
+            102.0, 
             102.0,  
             102.0,  
         ]
@@ -75,12 +74,12 @@ class RateLimiterTests(unittest.TestCase):
 
 
 class NotionClientDefaultsTests(unittest.TestCase):
-    def test_defaults_favor_full_page_size_and_conservative_pacing(self) -> None:
+    def test_defaults_favor_full_page_size_and_measured_pacing(self) -> None:
         client = NotionClient(token="fake-token")
 
         self.assertEqual(client.page_size, 100)
-        self.assertEqual(client.requests_per_second, 2.5)
-        self.assertEqual(client.burst, 3)
+        self.assertEqual(client.requests_per_second, 3.0)
+        self.assertEqual(client.burst, 8)
 
     def test_page_size_is_still_clamped_to_the_api_maximum(self) -> None:
         client = NotionClient(token="fake-token", page_size=500)

@@ -26,6 +26,7 @@ class QueueItem:
     title: str = ""
     parent: dict[str, Any] | None = None
     owner_id: str | None = None
+    root_title: str = ""
 
 class BackupRunner:
     def __init__(self, config: dict[str, Any], client: NotionClient) -> None:
@@ -49,6 +50,7 @@ class BackupRunner:
             "linked_views": 0,
             "skipped_child_databases": 0,
         }
+        self.counts_by_root: dict[str, dict[str, int]] = {}
 
     def run(self) -> Path:
         backup_config = self.config.get("backup", {})
@@ -131,6 +133,7 @@ class BackupRunner:
             },
             "objects": sorted(self.manifest_objects, key=lambda item: (item["type"], item["id"])),
             "restore_map": dict(sorted(self.restore_map.items())),
+            "counts_by_root": dict(sorted(self.counts_by_root.items())),
         }
         _write_manifest_with_size(snapshot_dir, manifest)
 
@@ -159,6 +162,16 @@ class BackupRunner:
             getattr(self.client, "total_rate_limit_wait_seconds", 0.0),
             getattr(self.client, "total_retry_wait_seconds", 0.0),
         )
+        for root_title in sorted(self.counts_by_root, key=lambda title: -self.counts_by_root[title]["blocks"]):
+            bucket = self.counts_by_root[root_title]
+            LOGGER.info(
+                "  by root: %s -- pages=%d databases=%d rows=%d blocks=%d",
+                root_title,
+                bucket["pages"],
+                bucket["databases"],
+                bucket["database_rows"],
+                bucket["blocks"],
+            )
         return snapshot_dir
 
     def _seed_queue(self) -> list[QueueItem]:
@@ -203,13 +216,13 @@ class BackupRunner:
                 if root.get("top_level_only") and page.get("parent", {}).get("type") != "workspace":
                     raise ValueError(f"Configured page root {root_id} is not a top-level workspace page")
                 self.preloaded_pages[normalize_id(root_id)] = page
-            return QueueItem(root_type, root_id, "config_root")
+            return QueueItem(root_type, root_id, "config_root", root_title=root.get("title", ""))
 
         if root_type == "page" and root.get("title"):
             page = self._resolve_page_by_title(root)
             page_id = page["id"]
             self.preloaded_pages[normalize_id(page_id)] = page
-            return QueueItem("page", page_id, "resolved_config_root")
+            return QueueItem("page", page_id, "resolved_config_root", root_title=root.get("title", ""))
 
         raise ValueError(f"Unable to resolve configured backup root: {root}")
 
@@ -267,8 +280,11 @@ class BackupRunner:
         write_json(page_dir / "blocks.json", blocks)
         write_text(page_dir / "content.md", markdown)
 
+        block_count = _count_blocks(blocks)
         self.counts["pages"] += 1
-        self.counts["blocks"] += _count_blocks(blocks)
+        self.counts["blocks"] += block_count
+        self._bump_root_count(item.root_title, "pages")
+        self._bump_root_count(item.root_title, "blocks", block_count)
         self._record_object(
             object_id=page_id,
             object_type="page",
@@ -281,7 +297,7 @@ class BackupRunner:
             },
             title=title,
         )
-        return _queue_children(blocks, owner_id=page_id)
+        return _queue_children(blocks, owner_id=page_id, root_title=item.root_title)
 
     def _backup_database(self, snapshot_dir: Path, item: QueueItem) -> list[QueueItem]:
         database = self.client.retrieve_database(item.object_id)
@@ -294,6 +310,8 @@ class BackupRunner:
 
         self.counts["databases"] += 1
         self.counts["database_rows"] += len(rows)
+        self._bump_root_count(item.root_title, "databases")
+        self._bump_root_count(item.root_title, "database_rows", len(rows))
         self._record_object(
             object_id=database_id,
             object_type="database",
@@ -306,7 +324,11 @@ class BackupRunner:
             title=_database_title(database),
         )
 
-        return [QueueItem("page", row["id"], f"database:{database_id}") for row in rows if row.get("id")]
+        return [
+            QueueItem("page", row["id"], f"database:{database_id}", root_title=item.root_title)
+            for row in rows
+            if row.get("id")
+        ]
 
     def _fetch_block_tree(self, block_id: str) -> list[dict[str, Any]]:
         root_blocks = self._safe_list_block_children(block_id, owner_id=block_id)
@@ -402,6 +424,13 @@ class BackupRunner:
         self._warning_keys.add(key)
         self.warnings.append({"code": code, "object_id": object_id, "message": message, "details": details})
 
+    def _bump_root_count(self, root_title: str, key: str, amount: int = 1) -> None:
+        label = root_title or "(no configured root)"
+        bucket = self.counts_by_root.setdefault(
+            label, {"pages": 0, "databases": 0, "database_rows": 0, "blocks": 0}
+        )
+        bucket[key] += amount
+
     def _record_error(self, code: str, object_id: str, message: str, details: dict[str, Any]) -> None:
         self.errors.append({"code": code, "object_id": object_id, "message": message, "details": details})
 
@@ -446,20 +475,20 @@ def run_backup(config_path: str | None = None) -> Path:
         page_size=int(notion.get("page_size", 100)),
         retry_initial_sleep_seconds=float(notion.get("retry_initial_sleep_seconds", 2)),
         retry_max_sleep_seconds=float(notion.get("retry_max_sleep_seconds", 120)),
-        requests_per_second=float(notion.get("requests_per_second", 2.5)),
-        burst=int(notion.get("burst", 3)),
+        requests_per_second=float(notion.get("requests_per_second", 3.0)),
+        burst=int(notion.get("burst", 8)),
     )
     return BackupRunner(config, client).run()
 
 
-def _queue_children(blocks: list[dict[str, Any]], owner_id: str) -> list[QueueItem]:
+def _queue_children(blocks: list[dict[str, Any]], owner_id: str, root_title: str = "") -> list[QueueItem]:
     queue: list[QueueItem] = []
     stack = list(reversed(blocks))
     while stack:
         block = stack.pop()
         block_type = block.get("type")
         if block_type == "child_page":
-            queue.append(QueueItem("page", block["id"], "child_page_block", owner_id=owner_id))
+            queue.append(QueueItem("page", block["id"], "child_page_block", owner_id=owner_id, root_title=root_title))
         elif block_type == "child_database":
             queue.append(
                 QueueItem(
@@ -469,6 +498,7 @@ def _queue_children(blocks: list[dict[str, Any]], owner_id: str) -> list[QueueIt
                     title=block.get("child_database", {}).get("title", ""),
                     parent=block.get("parent", {}),
                     owner_id=owner_id,
+                    root_title=root_title,
                 )
             )
         stack.extend(reversed(block.get("children", [])))

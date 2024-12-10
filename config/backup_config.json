@@ -2,10 +2,10 @@
   "format_version": "2.2.0",
   "notion": {
     "api_version": "2022-06-28",
-    "burst": 3,
+    "burst": 8,
     "max_retries": 8,
     "page_size": 100,
-    "requests_per_second": 2.5,
+    "requests_per_second": 3.0,
     "retry_initial_sleep_seconds": 2,
     "retry_max_sleep_seconds": 120,
     "root_search_page_size": 25,
@@ -43,13 +43,6 @@
         "type": "page",
         "id": "351733f6-271e-811f-bd0f-fd7b50bb8cfa",
         "title": "Ground Zero \ud83c\udf2a\ufe0f",
-        "top_level_only": true,
-        "enabled": true
-      },
-      {
-        "type": "page",
-        "id": "a73733f6-271e-83ea-957d-81337b6a4504",
-        "title": "Second Brain \u2b50\ufe0f",
         "top_level_only": true,
         "enabled": true
       },

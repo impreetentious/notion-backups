@@ -57,7 +57,6 @@ class _RateLimiter:
 
 
 class NotionClient:
-
     BASE_URL = "https://api.notion.com/v1"
 
     def __init__(
@@ -69,8 +68,8 @@ class NotionClient:
         page_size: int = 100,
         retry_initial_sleep_seconds: float = 2.0,
         retry_max_sleep_seconds: float = 120.0,
-        requests_per_second: float = 2.5,
-        burst: int = 3,
+        requests_per_second: float = 3.0,
+        burst: int = 8,
     ) -> None:
         self.token = token or os.getenv("NOTION_TOKEN")
         if not self.token:

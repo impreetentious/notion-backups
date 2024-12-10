@@ -10,7 +10,7 @@ from notion_backup.notion_client import NotionApiError
 from notion_backup.runner import BackupRunner
 
 class ConfigTests(unittest.TestCase):
-    def test_configured_roots_are_the_five_master_pages(self) -> None:
+    def test_configured_roots_are_the_four_master_pages(self) -> None:
         config = load_config("config/backup_config.json")
         roots = enabled_roots(config)
 
@@ -20,7 +20,6 @@ class ConfigTests(unittest.TestCase):
                 "Sage Sanctuary 🌿",
                 "Command Centre 🚀",
                 "Ground Zero 🌪️",
-                "Second Brain ⭐️",
                 "Master Control ⚡️",
             ],
         )
