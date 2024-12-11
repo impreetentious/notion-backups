@@ -2,7 +2,7 @@
 
 Format name: `notion-hybrid-backup`
 
-Current version: `2.2.0`
+Current version: `2.3.0`
 
 This repository treats the backup format as a stable restore contract. Future incompatible changes should create a new version and keep readers for old versions.
 
@@ -27,7 +27,7 @@ exports/NB_YYYYMMDD_HHMMSS+0530/
       view_reference.json
 ```
 
-Older snapshots are uploaded to Google Drive as:
+Snapshots are uploaded to Google Drive as:
 
 ```text
 NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz

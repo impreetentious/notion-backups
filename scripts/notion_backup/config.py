@@ -30,10 +30,6 @@ def _apply_env_overrides(config: dict[str, Any]) -> None:
         notion["max_retries"] = int(os.environ["NOTION_MAX_RETRIES"])
     if os.getenv("NOTION_PAGE_SIZE"):
         notion["page_size"] = int(os.environ["NOTION_PAGE_SIZE"])
-    if os.getenv("NOTION_REQUESTS_PER_SECOND"):
-        notion["requests_per_second"] = float(os.environ["NOTION_REQUESTS_PER_SECOND"])
-    if os.getenv("NOTION_BURST"):
-        notion["burst"] = int(os.environ["NOTION_BURST"])
     if os.getenv("BACKUP_OUTPUT_DIR"):
         config.setdefault("backup", {})["output_dir"] = os.environ["BACKUP_OUTPUT_DIR"]
     if os.getenv("BACKUP_ARCHIVE_DIR"):
@@ -74,10 +70,6 @@ def _validate_config(config: dict[str, Any], path: Path) -> None:
         retain_days = int(retention.get("retain_days", 30))
         if retain_days < 1:
             raise ValueError(f"{path}: retention.retain_days must be at least 1")
-
-    github_keep = int(config.get("storage", {}).get("github", {}).get("keep_latest_snapshots", 0))
-    if github_keep < 0:
-        raise ValueError(f"{path}: storage.github.keep_latest_snapshots must be at least 0")
 
 def enabled_roots(config: dict[str, Any]) -> list[dict[str, Any]]:
     return [root for root in config.get("backup", {}).get("roots", []) if root.get("enabled", True)]

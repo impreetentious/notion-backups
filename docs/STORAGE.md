@@ -6,7 +6,7 @@ Google Drive is the long-term archive layer. GitHub does not retain any committe
 
 - GitHub Actions creates a working snapshot during the run.
 - The manifest is updated with final archive status before success notifications are sent.
-- `storage.github.keep_latest_snapshots: 0` means no backup snapshots should remain committed to the repository after archival.
+- No backup snapshots are retained in the GitHub repository; every snapshot is archived to Google Drive and then removed from the runner.
 
 If Google Drive archival is unavailable, the run reports a storage warning instead of pretending the archive completed.
 

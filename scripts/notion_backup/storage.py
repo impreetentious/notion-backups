@@ -18,7 +18,6 @@ LOGGER = logging.getLogger(__name__)
 class StorageResult:
     status: str
     destination: str
-    retained_on_github: list[str] = field(default_factory=list)
     uploaded_to_external: list[str] = field(default_factory=list)
     deleted_from_github: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -32,25 +31,18 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
     archive_dir = Path(backup.get("archive_dir", "archives"))
 
     snapshots = _snapshot_dirs(output_dir)
-    keep_latest = int(storage.get("github", {}).get("keep_latest_snapshots", 0))
-    if keep_latest > 0:
-        retained = snapshots[-keep_latest:]
-        candidates = snapshots[:-keep_latest]
-    else:
-        retained = []
-        candidates = snapshots
+    candidates = snapshots
 
     external = storage.get("external_archive", {})
     result = StorageResult(
         status="success",
         destination="github",
-        retained_on_github=[snapshot.path.name for snapshot in retained],
     )
 
     if not external.get("enabled", False):
         result.status = "warning" if candidates else "success"
         result.warnings.extend(
-            f"{snapshot.path.name} is older than the GitHub active set but external archival is disabled."
+            f"{snapshot.path.name} was not archived because external archival is disabled."
             for snapshot in candidates
         )
         _update_current_manifest(current_snapshot_dir, result)
@@ -78,7 +70,7 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
         upload = _run([str(external.get("command", "rclone")), "copyto", str(archive_path), remote_path])
         if upload.returncode:
             result.status = "warning"
-            result.warnings.append(f"Upload failed for {snapshot.path.name}; keeping it on GitHub.")
+            result.warnings.append(f"Upload failed for {snapshot.path.name}; it was not archived.")
             result.errors.append(upload.stderr.strip() or upload.stdout.strip() or f"rclone exited {upload.returncode}")
             continue
         result.uploaded_to_external.append(remote_path)
@@ -143,7 +135,6 @@ def _update_current_manifest(current_snapshot_dir: Path | None, result: StorageR
     manifest["storage"] = {
         "destination": result.destination,
         "status": result.status,
-        "retained_on_github": result.retained_on_github,
         "uploaded_to_external": result.uploaded_to_external,
         "deleted_from_github": result.deleted_from_github,
         "warnings": result.warnings,

@@ -28,17 +28,16 @@ class NotifyStatusTests(unittest.TestCase):
             },
             {
                 "storage": {
-                    "github": {"keep_latest_snapshots": 0},
                     "external_archive": {"enabled": True},
                 }
             },
         )
 
         self.assertEqual(payload["backup_size"], "4.00 KB")
-        self.assertEqual(payload["storage_destination"], "Google Drive archive only (0 snapshots retained in GitHub)")
+        self.assertEqual(payload["storage_destination"], "Google Drive archive")
         body = _email_body(payload)
         self.assertIn("Size: 4.00 KB", body)
-        self.assertIn("Storage: Google Drive archive only (0 snapshots retained in GitHub)", body)
+        self.assertIn("Storage: Google Drive archive", body)
 
     def test_resolve_manifest_falls_back_to_storage_summary(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -64,7 +63,7 @@ class NotifyStatusTests(unittest.TestCase):
                 "errors": [],
                 "storage": {
                     "warnings": [
-                        "Upload failed for NB_20260522_181026+0530; keeping it on GitHub.",
+                        "Upload failed for NB_20260522_181026+0530; it was not archived.",
                         "Could not list external archives for retention cleanup.",
                     ],
                     "errors": [

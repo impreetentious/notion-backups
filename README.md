@@ -7,6 +7,7 @@ Private, automated cron-based backup system for exporting Notion snapshots.
 - Runs automatically every Monday and Friday at `00:30 IST`.
 - Keeps a manual GitHub Actions trigger.
 - Reads from Notion only. It never creates, edits, moves, archives or deletes Notion content.
+- Paces outbound Notion API calls with a client-side limiter (default: 3 requests/sec, burst of 8) so the run stays under Notion's rate limits proactively, in addition to retrying rate-limited/server-error responses with backoff.
 - Writes restore-oriented snapshots into `exports/`.
 - Uploads snapshots directly to Google Drive as `tar.gz` archives when Drive is configured.
 - Retains at least 30 days of external archives by default.

@@ -10,11 +10,12 @@ from unittest.mock import patch
 from notion_backup.storage import manage_storage
 
 class StorageTests(unittest.TestCase):
-    def test_external_disabled_keeps_older_snapshots_and_warns(self) -> None:
+    def test_external_disabled_keeps_all_snapshots_and_warns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp) / "exports"
             archive_dir = Path(tmp) / "archives"
-            for name in ["NB_20260501_020000+0530", "NB_20260505_020000+0530", "NB_20260508_020000+0530"]:
+            names = ["NB_20260501_020000+0530", "NB_20260505_020000+0530", "NB_20260508_020000+0530"]
+            for name in names:
                 snapshot = output_dir / name
                 snapshot.mkdir(parents=True)
                 (snapshot / "manifest.json").write_text(json.dumps({"created_at": _created_at_from_name(name)}), encoding="utf-8")
@@ -22,24 +23,26 @@ class StorageTests(unittest.TestCase):
             result = manage_storage(
                 {
                     "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
-                    "storage": {"github": {"keep_latest_snapshots": 2}, "external_archive": {"enabled": False}},
+                    "storage": {"external_archive": {"enabled": False}},
                 }
             )
 
             self.assertEqual(result.status, "warning")
-            self.assertTrue((output_dir / "NB_20260501_020000+0530").exists())
-            self.assertEqual(result.retained_on_github, ["NB_20260505_020000+0530", "NB_20260508_020000+0530"])
+            for name in names:
+                self.assertTrue((output_dir / name).exists())
+            self.assertEqual(len(result.warnings), len(names))
 
     @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
     @patch("notion_backup.storage._run")
-    def test_successful_upload_deletes_only_older_snapshot(self, run_mock, _which_mock) -> None:
+    def test_successful_upload_archives_and_deletes_all_snapshots(self, run_mock, _which_mock) -> None:
         run_mock.return_value.returncode = 0
         run_mock.return_value.stdout = "[]"
         run_mock.return_value.stderr = ""
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp) / "exports"
             archive_dir = Path(tmp) / "archives"
-            for name in ["NB_20260501_020000+0530", "NB_20260505_020000+0530", "NB_20260508_020000+0530"]:
+            names = ["NB_20260501_020000+0530", "NB_20260505_020000+0530", "NB_20260508_020000+0530"]
+            for name in names:
                 snapshot = output_dir / name
                 snapshot.mkdir(parents=True)
                 (snapshot / "manifest.json").write_text(json.dumps({"created_at": _created_at_from_name(name)}), encoding="utf-8")
@@ -49,7 +52,6 @@ class StorageTests(unittest.TestCase):
                     "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
                     "retention": {"retain_days": 60},
                     "storage": {
-                        "github": {"keep_latest_snapshots": 2},
                         "external_archive": {
                             "enabled": True,
                             "remote": "notionbackups",
@@ -61,10 +63,9 @@ class StorageTests(unittest.TestCase):
             )
 
             self.assertEqual(result.status, "success")
-            self.assertFalse((output_dir / "NB_20260501_020000+0530").exists())
-            self.assertTrue((output_dir / "NB_20260505_020000+0530").exists())
-            self.assertTrue((output_dir / "NB_20260508_020000+0530").exists())
-            self.assertEqual(len(result.uploaded_to_external), 1)
+            for name in names:
+                self.assertFalse((output_dir / name).exists())
+            self.assertEqual(len(result.uploaded_to_external), len(names))
 
     @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
     @patch("notion_backup.storage._run")
@@ -81,17 +82,16 @@ class StorageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp) / "exports"
             archive_dir = Path(tmp) / "archives"
-            for name in ["NB_20260501_020000+0530", "NB_20260505_020000+0530", "NB_20260508_020000+0530"]:
-                snapshot = output_dir / name
-                snapshot.mkdir(parents=True)
-                (snapshot / "manifest.json").write_text(json.dumps({"created_at": _created_at_from_name(name)}), encoding="utf-8")
+            name = "NB_20260501_020000+0530"
+            snapshot = output_dir / name
+            snapshot.mkdir(parents=True)
+            (snapshot / "manifest.json").write_text(json.dumps({"created_at": _created_at_from_name(name)}), encoding="utf-8")
 
             result = manage_storage(
                 {
                     "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
                     "retention": {"retain_days": 60},
                     "storage": {
-                        "github": {"keep_latest_snapshots": 2},
                         "external_archive": {
                             "enabled": True,
                             "remote": "notionbackups",
@@ -106,7 +106,7 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(
                 result.warnings,
                 [
-                    "Upload failed for NB_20260501_020000+0530; keeping it on GitHub.",
+                    "Upload failed for NB_20260501_020000+0530; it was not archived.",
                     "Could not list external archives for retention cleanup.",
                 ],
             )

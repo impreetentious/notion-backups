@@ -28,7 +28,7 @@ class NotionApiError(RuntimeError):
 
 class _RateLimiter:
 
-    def __init__(self, requests_per_second: float, burst: int = 3) -> None:
+    def __init__(self, requests_per_second: float, burst: int = 8) -> None:
         if requests_per_second <= 0:
             raise ValueError("requests_per_second must be positive")
         if burst < 1:

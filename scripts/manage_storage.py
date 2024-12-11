@@ -23,7 +23,6 @@ def main() -> int:
         payload = {
             "status": result.status,
             "destination": result.destination,
-            "retained_on_github": result.retained_on_github,
             "uploaded_to_external": result.uploaded_to_external,
             "deleted_from_github": result.deleted_from_github,
             "warnings": result.warnings,
