@@ -91,6 +91,40 @@ class RetentionTimestampTests(unittest.TestCase):
             self.assertFalse(old_folder.exists())
             self.assertTrue(recent_folder.exists())
 
+    def test_min_snapshots_floor_caps_deletions_even_when_all_are_expired(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            output_dir.mkdir()
+            archive_dir.mkdir()
+
+            names = [
+                "NB_20260101_000000+0000",
+                "NB_20260102_000000+0000",
+                "NB_20260103_000000+0000",
+                "NB_20260104_000000+0000",
+                "NB_20260105_000000+0000",
+            ]
+            for name in names:
+                (output_dir / name).mkdir()
+
+            deleted = apply_retention(
+                output_dir=output_dir,
+                archive_dir=archive_dir,
+                retain_days=30,
+                min_snapshots=2,
+                now=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            )
+
+            # Every snapshot predates the 30-day cutoff, but the min_snapshots
+            # floor caps deletions at len(snapshots) - min_snapshots = 5 - 2 = 3.
+            self.assertEqual(
+                [path.name for path in deleted],
+                ["NB_20260101_000000+0000", "NB_20260102_000000+0000", "NB_20260103_000000+0000"],
+            )
+            self.assertTrue((output_dir / "NB_20260104_000000+0000").exists())
+            self.assertTrue((output_dir / "NB_20260105_000000+0000").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

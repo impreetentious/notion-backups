@@ -113,6 +113,46 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(result.errors, ['oauth2: "invalid_grant" "Token has been expired or revoked."'])
             self.assertTrue((output_dir / "NB_20260501_020000+0530").exists())
 
+    @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
+    @patch("notion_backup.storage._run")
+    def test_cleanup_deletes_only_expired_remote_archives(self, run_mock, _which_mock) -> None:
+        listing = json.dumps(
+            [
+                {"Name": "NB_expired.tar.gz", "ModTime": "2000-01-01T00:00:00+00:00"},
+                {"Name": "NB_recent.tar.gz", "ModTime": "2099-01-01T00:00:00+00:00"},
+                {"Name": "notes.txt", "ModTime": "2000-01-01T00:00:00+00:00"},
+                {"Name": "NB_malformed.tar.gz", "ModTime": "not-a-timestamp"},
+            ]
+        )
+        run_mock.side_effect = [
+            subprocess.CompletedProcess(["rclone", "lsjson"], returncode=0, stdout=listing, stderr=""),
+            subprocess.CompletedProcess(["rclone", "deletefile"], returncode=0, stdout="", stderr=""),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            output_dir.mkdir(parents=True)
+
+            result = manage_storage(
+                {
+                    "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
+                    "storage": {
+                        "external_archive": {
+                            "enabled": True,
+                            "remote": "notionbackups",
+                            "folder": "NotionBackups",
+                            "retention_days": 30,
+                            "delete_remote_older_than_retention": True,
+                        },
+                    },
+                }
+            )
+
+            self.assertEqual(result.status, "success")
+            delete_calls = [call for call in run_mock.call_args_list if call.args[0][1] == "deletefile"]
+            self.assertEqual(len(delete_calls), 1)
+            self.assertEqual(delete_calls[0].args[0][2], "notionbackups:NotionBackups/NB_expired.tar.gz")
+
 
 def _created_at_from_name(name: str) -> str:
     return f"{name[3:7]}-{name[7:9]}-{name[9:11]}T{name[12:14]}:{name[14:16]}:{name[16:18]}{name[18:]}"

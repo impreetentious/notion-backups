@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from notion_backup.config import enabled_roots, load_config
+from notion_backup.config import _apply_env_overrides, enabled_roots, load_config
 from notion_backup.notion_client import NotionApiError
 from notion_backup.runner import BackupRunner
 
@@ -25,6 +27,41 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertEqual(config["backup"]["scope"]["mode"], "configured_roots")
         self.assertNotIn("Clarity", json.dumps(config))
+
+
+class EnvOverrideTests(unittest.TestCase):
+    def test_env_overrides_apply_with_type_coercion(self) -> None:
+        config: dict = {}
+        env = {
+            "NOTION_REQUEST_TIMEOUT_SECONDS": "90",
+            "NOTION_MAX_RETRIES": "3",
+            "NOTION_PAGE_SIZE": "50",
+            "BACKUP_OUTPUT_DIR": "custom_exports",
+            "RETENTION_DAYS": "45",
+            "BACKUP_COMPRESSION_ENABLED": "yes",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            _apply_env_overrides(config)
+
+        self.assertEqual(config["notion"]["timeout_seconds"], 90)
+        self.assertEqual(config["notion"]["max_retries"], 3)
+        self.assertEqual(config["notion"]["page_size"], 50)
+        self.assertEqual(config["backup"]["output_dir"], "custom_exports")
+        self.assertEqual(config["retention"]["retain_days"], 45)
+        self.assertTrue(config["compression"]["enabled"])
+
+    def test_retention_days_env_is_floored_at_one(self) -> None:
+        config: dict = {}
+        with patch.dict(os.environ, {"RETENTION_DAYS": "0"}, clear=False):
+            _apply_env_overrides(config)
+        self.assertEqual(config["retention"]["retain_days"], 1)
+
+    def test_removed_notion_env_hooks_do_not_apply(self) -> None:
+        config: dict = {}
+        with patch.dict(os.environ, {"NOTION_BURST": "99", "NOTION_REQUESTS_PER_SECOND": "50"}, clear=False):
+            _apply_env_overrides(config)
+        self.assertNotIn("burst", config.get("notion", {}))
+        self.assertNotIn("requests_per_second", config.get("notion", {}))
 
 
 ROOT_PAGE_ID = "351733f6-271e-811f-bd0f-fd7b50bb8cfa"

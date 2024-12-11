@@ -41,6 +41,7 @@ NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz
 - `format_version`
 - `run_id` and `version`, using `NB_YYYYMMDD_HHMMSS+ZZZZ`
 - `created_at` and `timestamp`
+- `notion_api_version`
 - `status`: `success`, `warning`, or `partial`
 - `size_bytes` and `size_human`
 - `storage.destination` and storage warnings/errors
