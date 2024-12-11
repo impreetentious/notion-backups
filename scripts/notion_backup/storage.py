@@ -86,7 +86,7 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
 
 def _cleanup_external_archives(config: dict[str, Any], result: StorageResult) -> None:
     external = config.get("storage", {}).get("external_archive", {})
-    retain_days = int(external.get("retention_days", config.get("retention", {}).get("retain_days", 60)))
+    retain_days = int(external.get("retention_days", config.get("retention", {}).get("retain_days", 30)))
     if retain_days < 10:
         retain_days = 10
     if not external.get("delete_remote_older_than_retention", True):

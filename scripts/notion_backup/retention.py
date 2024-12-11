@@ -12,7 +12,7 @@ def apply_retention(
     output_dir: Path,
     archive_dir: Path,
     retain_days: int,
-    min_snapshots: int = 8,
+    min_snapshots: int = 2,
     now: datetime | None = None,
 ) -> list[Path]:
     if retain_days < 1:

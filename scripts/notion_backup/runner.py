@@ -185,7 +185,7 @@ class BackupRunner:
         if mode == "all_top_level_pages":
             return self._discover_top_level_pages()
 
-        if not backup.get("include_all_accessible", True):
+        if not backup.get("include_all_accessible", False):
             raise ValueError("No backup roots configured and include_all_accessible is false")
 
         LOGGER.info("No roots configured; searching all Notion objects accessible to the integration")

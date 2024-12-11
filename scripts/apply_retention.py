@@ -25,8 +25,8 @@ def main() -> int:
         deleted = apply_retention(
             output_dir=Path(backup.get("output_dir", "exports")),
             archive_dir=Path(backup.get("archive_dir", "archives")),
-            retain_days=int(retention.get("retain_days", 60)),
-            min_snapshots=int(retention.get("min_snapshots", 8)),
+            retain_days=int(retention.get("retain_days", 30)),
+            min_snapshots=int(retention.get("min_snapshots", 2)),
         )
         print(f"Deleted {len(deleted)} expired backup paths")
         return 0
