@@ -82,6 +82,11 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
 
     _cleanup_external_archives(config, result)
     result.destination = "github+google_drive" if result.uploaded_to_external else "github"
+    # Finalize the current snapshot's manifest (and the summary fallback) with the
+    # final storage outcome. This is a no-op when the snapshot was uploaded and
+    # removed, but is essential when an upload failed and the snapshot survived:
+    # without it, archival warnings/errors never reach the notification step.
+    _update_current_manifest(current_snapshot_dir, result)
     return result
 
 def _cleanup_external_archives(config: dict[str, Any], result: StorageResult) -> None:

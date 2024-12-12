@@ -54,7 +54,7 @@ Use **Actions -> Notion Backup -> Run Workflow** for a manual run.
 4. The runner reads Notion pages/databases through read-oriented API calls.
 5. A versioned snapshot is written under `exports/NB_YYYYMMDD_HHMMSS+0530/`.
 6. The manifest records status, size, format version, timestamp, warnings/errors, restore map and storage metadata.
-7. `scripts/manage_storage.py` updates the final manifest with archive status and sends snapshots to Google Drive.
+7. `scripts/manage_storage.py` updates the final manifest with archive status and sends snapshots to Google Drive. This runs whether the upload succeeds or fails, so a failed Drive upload is always reflected in the manifest instead of silently keeping a stale "pending" status.
 8. GitHub Actions sends notifications after the final manifest has the completed size and storage details.
 
 ## Google Drive Setup
@@ -74,7 +74,7 @@ base64 -i ~/.config/rclone/rclone.conf
 
 Snapshots are uploaded to `notionbackups:NotionBackups/`. Remote archives older than 30 days are deleted automatically when rclone can list and delete them.
 
-If Drive is not configured, the backup still runs, the local workflow snapshot remains unarchived, and the notification reports a storage warning.
+If Drive is not configured, the backup still runs, the local workflow snapshot remains unarchived, and the notification reports a storage warning. The same is true if Drive is configured but the upload itself fails (expired credentials, misconfigured remote, etc.) — both the success and failure notification steps read the storage summary, so a failed archival is never reported as a clean run.
 
 ## Backup Format
 

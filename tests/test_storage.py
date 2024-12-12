@@ -115,6 +115,62 @@ class StorageTests(unittest.TestCase):
 
     @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
     @patch("notion_backup.storage._run")
+    def test_failed_upload_records_storage_status_in_the_current_manifest(self, run_mock, _which_mock) -> None:
+        run_mock.side_effect = [
+            subprocess.CompletedProcess(
+                ["rclone", "copyto"], returncode=1, stdout="", stderr="upload boom"
+            ),
+            subprocess.CompletedProcess(["rclone", "lsjson"], returncode=0, stdout="[]", stderr=""),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            name = "NB_20260501_020000+0530"
+            snapshot = output_dir / name
+            snapshot.mkdir(parents=True)
+            (snapshot / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "created_at": _created_at_from_name(name),
+                        "storage": {"destination": "github", "status": "pending", "warnings": [], "errors": []},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = manage_storage(
+                {
+                    "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
+                    "retention": {"retain_days": 60},
+                    "storage": {
+                        "external_archive": {
+                            "enabled": True,
+                            "remote": "notionbackups",
+                            "folder": "NotionBackups",
+                            "delete_remote_older_than_retention": True,
+                        },
+                    },
+                },
+                current_snapshot_dir=snapshot,
+            )
+
+            # The snapshot survives the failed upload, and its manifest now carries the
+            # archival warning/error so the notification step can surface it.
+            self.assertEqual(result.status, "warning")
+            self.assertTrue((snapshot / "manifest.json").exists())
+            on_disk = json.loads((snapshot / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(on_disk["storage"]["status"], "warning")
+            self.assertIn(
+                "Upload failed for NB_20260501_020000+0530; it was not archived.",
+                on_disk["storage"]["warnings"],
+            )
+            self.assertEqual(on_disk["storage"]["errors"], ["upload boom"])
+            # The in-memory manifest used for the storage-summary fallback matches.
+            self.assertEqual(result.current_manifest["storage"]["warnings"], on_disk["storage"]["warnings"])
+            self.assertEqual(result.current_manifest["storage"]["errors"], ["upload boom"])
+
+    @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
+    @patch("notion_backup.storage._run")
     def test_cleanup_deletes_only_expired_remote_archives(self, run_mock, _which_mock) -> None:
         listing = json.dumps(
             [
