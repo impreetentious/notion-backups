@@ -18,12 +18,10 @@ class NotionApiError(RuntimeError):
         *,
         status_code: int | None = None,
         body: dict[str, Any] | None = None,
-        response_text: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.body = body or {}
-        self.response_text = response_text
 
 
 class _RateLimiter:
@@ -196,7 +194,6 @@ class NotionClient:
                     f"Notion API {method} {path} failed: HTTP {exc.code}: {response_body}",
                     status_code=exc.code,
                     body=_parse_error_body(response_body),
-                    response_text=response_body,
                 ) from exc
             except (TimeoutError, socket.timeout) as exc:
                 if attempt < self.max_retries:

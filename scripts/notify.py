@@ -169,7 +169,6 @@ def _write_step_summary(payload: dict[str, Any]) -> None:
         f"- Size: `{payload.get('backup_size') or 'unknown'}`",
         f"- Timestamp: `{payload.get('timestamp')}`",
         f"- Storage: `{payload.get('storage_destination') or 'unknown'}`",
-        
         "",
         f"- Run: {payload.get('run_url') or 'local'}",
     ]
