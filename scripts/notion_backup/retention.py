@@ -20,7 +20,7 @@ def apply_retention(
 
     current_time = _normalize_datetime(now or datetime.now(timezone.utc))
     cutoff = current_time - timedelta(days=retain_days)
-    snapshots = _snapshot_dirs(output_dir)
+    snapshots = snapshot_dirs(output_dir)
     deletable = [snapshot for snapshot in snapshots if snapshot.created_at < cutoff]
     keep_count = max(min_snapshots, 0)
     max_deletions = max(len(snapshots) - keep_count, 0)
@@ -47,7 +47,7 @@ class Snapshot:
         self.created_at = created_at
 
 
-def _snapshot_dirs(output_dir: Path) -> list[Snapshot]:
+def snapshot_dirs(output_dir: Path) -> list[Snapshot]:
     if not output_dir.exists():
         return []
 

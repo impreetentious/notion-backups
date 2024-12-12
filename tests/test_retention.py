@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from notion_backup.retention import _created_at, _snapshot_dirs, apply_retention
+from notion_backup.retention import _created_at, apply_retention, snapshot_dirs
 
 class RetentionTimestampTests(unittest.TestCase):
     def test_manifest_timestamp_with_timezone_normalizes_to_utc(self) -> None:
@@ -72,7 +72,7 @@ class RetentionTimestampTests(unittest.TestCase):
             recent_folder = output_dir / "2026-05-18T02-25-58+0530"
             recent_folder.mkdir()
 
-            snapshots = _snapshot_dirs(output_dir)
+            snapshots = snapshot_dirs(output_dir)
             self.assertEqual(
                 [snapshot.path.name for snapshot in snapshots],
                 ["old-manifest", "NB_20260202_080000+0530", "2026-05-18T02-25-58+0530"],

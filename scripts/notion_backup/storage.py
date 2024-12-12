@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .retention import _snapshot_dirs
+from .retention import snapshot_dirs
 from .writer import create_tar_gz, write_json
 
 LOGGER = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
     output_dir = Path(backup.get("output_dir", "exports"))
     archive_dir = Path(backup.get("archive_dir", "archives"))
 
-    snapshots = _snapshot_dirs(output_dir)
+    snapshots = snapshot_dirs(output_dir)
     candidates = snapshots
 
     external = storage.get("external_archive", {})

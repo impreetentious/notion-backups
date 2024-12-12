@@ -122,14 +122,16 @@ class BackupRunner:
             "status": _status(self.warnings, self.errors),
             "size_bytes": 0,
             "size_human": "0 B",
+            # Pre-storage-step scaffold. manage_storage.py overwrites this with the
+            # final upload/delete results; the flat schema mirrors that shape so the
+            # key is consistent even if the storage step is skipped.
             "storage": {
-                "github": {
-                    "status": "retained",
-                    "path": snapshot_dir.as_posix(),
-                },
-                "external_archive": {
-                    "status": "pending" if _external_archive_enabled(self.config) else "disabled",
-                },
+                "destination": "github",
+                "status": "pending",
+                "uploaded_to_external": [],
+                "deleted_from_github": [],
+                "warnings": [],
+                "errors": [],
             },
             "objects": sorted(self.manifest_objects, key=lambda item: (item["type"], item["id"])),
             "restore_map": dict(sorted(self.restore_map.items())),

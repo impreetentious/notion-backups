@@ -23,13 +23,6 @@ def load_config(path: str | os.PathLike[str] | None = None) -> dict[str, Any]:
 
 
 def _apply_env_overrides(config: dict[str, Any]) -> None:
-    notion = config.setdefault("notion", {})
-    if os.getenv("NOTION_REQUEST_TIMEOUT_SECONDS"):
-        notion["timeout_seconds"] = int(os.environ["NOTION_REQUEST_TIMEOUT_SECONDS"])
-    if os.getenv("NOTION_MAX_RETRIES"):
-        notion["max_retries"] = int(os.environ["NOTION_MAX_RETRIES"])
-    if os.getenv("NOTION_PAGE_SIZE"):
-        notion["page_size"] = int(os.environ["NOTION_PAGE_SIZE"])
     if os.getenv("BACKUP_OUTPUT_DIR"):
         config.setdefault("backup", {})["output_dir"] = os.environ["BACKUP_OUTPUT_DIR"]
     if os.getenv("BACKUP_ARCHIVE_DIR"):
