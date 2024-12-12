@@ -14,7 +14,7 @@ from .config import enabled_roots, load_config
 from .markdown import blocks_to_markdown, page_title
 from .notion_client import NotionApiError, NotionClient, normalize_id
 from .retention import apply_retention
-from .writer import create_tar_gz, write_json, write_text
+from .writer import create_tar_gz, directory_size_bytes, format_bytes, write_json, write_text
 
 LOGGER = logging.getLogger(__name__)
 
@@ -555,28 +555,16 @@ def _is_linked_view_error(exc: NotionApiError) -> bool:
 def _write_manifest_with_size(snapshot_dir: Path, manifest: dict[str, Any]) -> None:
     manifest_path = snapshot_dir / "manifest.json"
 
-    total_bytes = sum(child.stat().st_size for child in snapshot_dir.rglob("*") if child.is_file())
+    total_bytes = directory_size_bytes(snapshot_dir)
 
     manifest.update(
         {
             "size_bytes": total_bytes,
-            "size_human": _format_bytes(total_bytes),
+            "size_human": format_bytes(total_bytes),
         }
     )
 
     write_json(manifest_path, manifest)
-
-
-def _format_bytes(size: int) -> str:
-    units = ["B", "KB", "MB", "GB"]
-    value = float(size)
-    for unit in units:
-        if value < 1024 or unit == units[-1]:
-            if unit == "B":
-                return f"{int(value)} {unit}"
-            return f"{value:.2f} {unit}"
-        value /= 1024
-    return f"{size} B"
 
 
 def _external_archive_enabled(config: dict[str, Any]) -> bool:

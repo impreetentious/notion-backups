@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .retention import snapshot_dirs
-from .writer import create_tar_gz, write_json
+from .writer import create_tar_gz, directory_size_bytes, format_bytes, write_json
 
 LOGGER = logging.getLogger(__name__)
 
@@ -145,24 +145,10 @@ def _update_current_manifest(current_snapshot_dir: Path | None, result: StorageR
         "warnings": result.warnings,
         "errors": result.errors,
     }
-    manifest["size_bytes"] = _directory_size_bytes(current_snapshot_dir)
-    manifest["size_human"] = _format_bytes(int(manifest["size_bytes"]))
+    manifest["size_bytes"] = directory_size_bytes(current_snapshot_dir)
+    manifest["size_human"] = format_bytes(int(manifest["size_bytes"]))
     result.current_manifest = manifest
     write_json(manifest_path, manifest)
-
-def _directory_size_bytes(path: Path) -> int:
-    return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
-
-def _format_bytes(size: int) -> str:
-    units = ["B", "KB", "MB", "GB"]
-    value = float(size)
-    for unit in units:
-        if value < 1024 or unit == units[-1]:
-            if unit == "B":
-                return f"{int(value)} {unit}"
-            return f"{value:.2f} {unit}"
-        value /= 1024
-    return f"{size} B"
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     LOGGER.info("Running storage command: %s", " ".join(command[:2]))

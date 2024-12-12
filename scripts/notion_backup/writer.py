@@ -20,3 +20,17 @@ def create_tar_gz(source_dir: Path, archive_path: Path) -> None:
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive_path, "w:gz") as archive:
         archive.add(source_dir, arcname=source_dir.name, recursive=True)
+
+def directory_size_bytes(path: Path) -> int:
+    return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
+
+def format_bytes(size: int) -> str:
+    units = ["B", "KB", "MB", "GB"]
+    value = float(size)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(value)} {unit}"
+            return f"{value:.2f} {unit}"
+        value /= 1024
+    return f"{size} B"

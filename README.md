@@ -94,6 +94,8 @@ exports/NB_YYYYMMDD_HHMMSS+0530/
 
 `manifest.json` is the restore entry point. It records format version, run metadata, object counts, original Notion IDs, parent references, file paths, size, status, storage destination, linked-view references and any warnings/errors from recoverable traversal failures.
 
+`size_bytes`/`size_human` are computed by one shared helper used at both the initial snapshot write and the storage finalize step, so the reported size is calculated the same way regardless of when it was last updated.
+
 ## Notifications
 
 Every run writes a GitHub Actions step summary and attempts email notification.
