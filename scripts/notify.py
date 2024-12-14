@@ -96,7 +96,7 @@ def _storage_destination_label(manifest: dict[str, Any], config: dict[str, Any])
         return "GitHub only"
     dest = manifest.get("storage", {}).get("destination", "").lower()
     if dest.startswith("github+google_drive"):
-        return "Google Drive archive"
+        return "Google Drive Archive"
     elif dest == "github":
         return "GitHub only"
     return "unknown"
@@ -121,9 +121,7 @@ def _status_label(status: str) -> str:
     return {
         "completed_with_warnings": "Completed with Warnings",
         "failed": "Failed",
-        "failure": "Failed",
         "success": "Success",
-        "warning": "Completed with Warnings",
     }.get(status, status.replace("_", " ").title())
 
 

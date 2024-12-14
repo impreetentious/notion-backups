@@ -34,10 +34,10 @@ class NotifyStatusTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["backup_size"], "4.00 KB")
-        self.assertEqual(payload["storage_destination"], "Google Drive archive")
+        self.assertEqual(payload["storage_destination"], "Google Drive Archive")
         body = _email_body(payload)
         self.assertIn("Size: 4.00 KB", body)
-        self.assertIn("Storage: Google Drive archive", body)
+        self.assertIn("Storage: Google Drive Archive", body)
 
     def test_resolve_manifest_falls_back_to_storage_summary(self) -> None:
         with TemporaryDirectory() as tmp:
