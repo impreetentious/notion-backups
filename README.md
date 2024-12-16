@@ -1,6 +1,8 @@
 # Notion Backups
 
-Private, automated cron-based backup system for exporting Notion snapshots.
+Personal, automated cron-based backup system for exporting Notion snapshots.
+
+**Release version:** `v1.0.1`
 
 ## What It Does
 
@@ -74,7 +76,7 @@ base64 -i ~/.config/rclone/rclone.conf
 
 Snapshots are uploaded to `notionbackups:NotionBackups/`. Remote archives older than 30 days are deleted automatically when rclone can list and delete them.
 
-If Drive is not configured, the backup still runs, the local workflow snapshot remains unarchived, and the notification reports a storage warning. The same is true if Drive is configured but the upload itself fails (expired credentials, misconfigured remote, etc.) — both the success and failure notification steps read the storage summary, so a failed archival is never reported as a clean run.
+If Drive is not configured, the backup still runs and the notification reports a storage warning, but the snapshot exists only on the ephemeral Actions runner and is discarded when the job ends — no durable copy is kept. The same is true if Drive is configured but the upload itself fails (expired credentials, misconfigured remote, etc.) — both the success and failure notification steps read the storage summary, so a failed archival is never reported as a clean run.
 
 ## Backup Format
 

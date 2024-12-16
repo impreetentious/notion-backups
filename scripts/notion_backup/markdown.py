@@ -33,8 +33,13 @@ def rich_text_to_markdown(items: list[dict[str, Any]]) -> str:
 
 def blocks_to_markdown(blocks: list[dict[str, Any]], depth: int = 0) -> str:
     lines: list[str] = []
-    for index, block in enumerate(blocks, start=1):
-        lines.extend(_block_to_lines(block, depth, index))
+    ordinal = 0
+    for block in blocks:
+        if block.get("type") == "numbered_list_item":
+            ordinal += 1
+        else:
+            ordinal = 0
+        lines.extend(_block_to_lines(block, depth, ordinal))
         children = block.get("children", [])
         if children:
             child_markdown = blocks_to_markdown(children, depth + 1)

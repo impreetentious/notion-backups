@@ -64,18 +64,35 @@ def manage_storage(config: dict[str, Any], current_snapshot_dir: Path | None = N
 
     for snapshot in candidates:
         archive_path = archive_dir / f"{snapshot.path.name}.tar.gz"
+        remote_path = f"{remote}:{folder}/{archive_path.name}" if folder else f"{remote}:{archive_path.name}"
+        # Finalize the snapshot manifest to its intended archived state before the
+        # tar is built, so the copy uploaded to Drive carries the real storage
+        # outcome instead of the pre-storage "pending" scaffold.
+        _write_storage_block(
+            snapshot.path,
+            {
+                "destination": "github+google_drive",
+                "status": "success",
+                "uploaded_to_external": [remote_path],
+                "deleted_from_github": [],
+                "warnings": [],
+                "errors": [],
+            },
+        )
         if not archive_path.exists():
             create_tar_gz(snapshot.path, archive_path)
-        remote_path = f"{remote}:{folder}/{archive_path.name}" if folder else f"{remote}:{archive_path.name}"
         upload = _run([str(external.get("command", "rclone")), "copyto", str(archive_path), remote_path])
         if upload.returncode:
             result.status = "warning"
             result.warnings.append(f"Upload failed for {snapshot.path.name}; it was not archived.")
             result.errors.append(upload.stderr.strip() or upload.stdout.strip() or f"rclone exited {upload.returncode}")
+            # The optimistic success block was wrong; rewrite the surviving
+            # snapshot manifest with the failure state and drop the unsent tar.
+            _update_current_manifest(snapshot.path, result)
+            archive_path.unlink(missing_ok=True)
             continue
         result.uploaded_to_external.append(remote_path)
         result.destination = "github+google_drive"
-        _update_current_manifest(snapshot.path, result)
         shutil.rmtree(snapshot.path)
         result.deleted_from_github.append(snapshot.path.as_posix())
         archive_path.unlink(missing_ok=True)
@@ -129,26 +146,34 @@ def _cleanup_external_archives(config: dict[str, Any], result: StorageResult) ->
         if delete_result.returncode:
             result.warnings.append(f"Could not delete expired external archive {name}.")
 
+def _write_storage_block(snapshot_dir: Path, storage: dict[str, Any]) -> dict[str, Any] | None:
+    manifest_path = snapshot_dir / "manifest.json"
+    if not manifest_path.exists():
+        return None
+    with manifest_path.open("r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    manifest["storage"] = storage
+    manifest["size_bytes"] = directory_size_bytes(snapshot_dir)
+    manifest["size_human"] = format_bytes(int(manifest["size_bytes"]))
+    write_json(manifest_path, manifest)
+    return manifest
+
 def _update_current_manifest(current_snapshot_dir: Path | None, result: StorageResult) -> None:
     if not current_snapshot_dir:
         return
-    manifest_path = current_snapshot_dir / "manifest.json"
-    if not manifest_path.exists():
-        return
-    with manifest_path.open("r", encoding="utf-8") as handle:
-        manifest = json.load(handle)
-    manifest["storage"] = {
-        "destination": result.destination,
-        "status": result.status,
-        "uploaded_to_external": result.uploaded_to_external,
-        "deleted_from_github": result.deleted_from_github,
-        "warnings": result.warnings,
-        "errors": result.errors,
-    }
-    manifest["size_bytes"] = directory_size_bytes(current_snapshot_dir)
-    manifest["size_human"] = format_bytes(int(manifest["size_bytes"]))
-    result.current_manifest = manifest
-    write_json(manifest_path, manifest)
+    manifest = _write_storage_block(
+        current_snapshot_dir,
+        {
+            "destination": result.destination,
+            "status": result.status,
+            "uploaded_to_external": result.uploaded_to_external,
+            "deleted_from_github": result.deleted_from_github,
+            "warnings": result.warnings,
+            "errors": result.errors,
+        },
+    )
+    if manifest is not None:
+        result.current_manifest = manifest
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     LOGGER.info("Running storage command: %s", " ".join(command[:2]))
