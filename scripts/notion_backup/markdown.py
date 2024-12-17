@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 def page_title(page: dict[str, Any]) -> str:
@@ -85,7 +86,11 @@ def _block_to_lines(block: dict[str, Any], depth: int, index: int) -> list[str]:
     if block_type == "code":
         language = data.get("language") or ""
         code = rich_text_to_markdown(data.get("rich_text", []))
-        return [f"```{language}", code, "```"]
+        # The fence must be longer than any backtick run inside the code body,
+        # or code containing ``` would terminate the block early.
+        longest_backtick_run = max((len(run) for run in re.findall(r"`+", code)), default=0)
+        fence = "`" * max(3, longest_backtick_run + 1)
+        return [f"{fence}{language}", code, fence]
     if block_type == "divider":
         return ["---"]
     if block_type == "child_page":

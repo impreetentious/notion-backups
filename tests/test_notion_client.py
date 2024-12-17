@@ -73,6 +73,26 @@ class RateLimiterTests(unittest.TestCase):
         sleep_mock.assert_not_called()
 
 
+class PropertyItemPaginationTests(unittest.TestCase):
+    @patch.object(NotionClient, "_request")
+    def test_retrieve_page_property_items_follows_pagination_and_encodes_the_property_id(
+        self, request_mock
+    ) -> None:
+        request_mock.side_effect = [
+            {"object": "list", "results": [{"index": 1}], "has_more": True, "next_cursor": "cursor-2"},
+            {"object": "list", "results": [{"index": 2}], "has_more": False},
+        ]
+        client = NotionClient(token="fake-token")
+
+        items = client.retrieve_page_property_items("page-1", "rel%3Aid")
+
+        self.assertEqual(items, [{"index": 1}, {"index": 2}])
+        first_path = request_mock.call_args_list[0].args[1]
+        self.assertTrue(first_path.startswith("/pages/page-1/properties/rel%253Aid?"))
+        second_path = request_mock.call_args_list[1].args[1]
+        self.assertIn("start_cursor=cursor-2", second_path)
+
+
 class NotionClientDefaultsTests(unittest.TestCase):
     def test_defaults_favor_full_page_size_and_measured_pacing(self) -> None:
         client = NotionClient(token="fake-token")

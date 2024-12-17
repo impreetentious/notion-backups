@@ -85,5 +85,31 @@ class TableRowRenderingTests(unittest.TestCase):
         self.assertEqual(lines, ["| Name |  | Owner |"])
 
 
+class CodeFenceTests(unittest.TestCase):
+    def test_plain_code_keeps_the_standard_three_backtick_fence(self) -> None:
+        block = {
+            "type": "code",
+            "code": {"language": "python", "rich_text": [{"plain_text": "print('hi')", "annotations": {}}]},
+        }
+
+        lines = _block_to_lines(block, depth=0, index=0)
+
+        self.assertEqual(lines, ["```python", "print('hi')", "```"])
+
+    def test_fence_grows_beyond_the_longest_backtick_run_in_the_code(self) -> None:
+        block = {
+            "type": "code",
+            "code": {
+                "language": "markdown",
+                "rich_text": [{"plain_text": "```python\nprint('hi')\n```", "annotations": {}}],
+            },
+        }
+
+        lines = _block_to_lines(block, depth=0, index=0)
+
+        self.assertEqual(lines[0], "````markdown")
+        self.assertEqual(lines[-1], "````")
+
+
 if __name__ == "__main__":
     unittest.main()

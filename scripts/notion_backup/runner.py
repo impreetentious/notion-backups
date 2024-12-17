@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections import deque
@@ -17,6 +18,11 @@ from .retention import apply_retention
 from .writer import create_tar_gz, directory_size_bytes, format_bytes, write_json, write_text
 
 LOGGER = logging.getLogger(__name__)
+
+# Notion truncates these list-valued page properties to 25 references in Page
+# objects; complete values need the paginated property-item endpoint.
+_PAGINATED_PROPERTY_TYPES = ("title", "rich_text", "relation", "people")
+_PROPERTY_REF_LIMIT = 25
 
 @dataclass(frozen=True)
 class QueueItem:
@@ -181,11 +187,13 @@ class BackupRunner:
         scope = backup.get("scope", {})
         mode = scope.get("mode", "configured_roots")
         roots = enabled_roots(self.config)
-        if roots:
-            return [self._root_to_queue_item(root) for root in roots]
-
+        # The scope mode is authoritative; config validation rejects the
+        # ambiguous combination of all_top_level_pages plus enabled roots.
         if mode == "all_top_level_pages":
             return self._discover_top_level_pages()
+
+        if roots:
+            return [self._root_to_queue_item(root) for root in roots]
 
         if not backup.get("include_all_accessible", False):
             raise ValueError("No backup roots configured and include_all_accessible is false")
@@ -271,11 +279,17 @@ class BackupRunner:
 
     def _backup_page(self, snapshot_dir: Path, item: QueueItem) -> list[QueueItem]:
         page = self.preloaded_pages.pop(normalize_id(item.object_id), None) or self.client.retrieve_page(item.object_id)
+        self._hydrate_page_properties(page)
         page_id = page["id"]
         page_dir = snapshot_dir / "pages" / normalize_id(page_id)
         blocks = self._fetch_block_tree(page_id)
         title = page_title(page)
-        markdown = f"---\nnotion_id: {page_id}\ntitle: {title}\ntype: page\nformat_version: {FORMAT_VERSION}\n---\n\n"
+        # json.dumps produces a double-quoted scalar that is also valid YAML, so
+        # titles containing ":", quotes, or newlines cannot break the front matter.
+        markdown = (
+            f"---\nnotion_id: {page_id}\ntitle: {json.dumps(title, ensure_ascii=False)}\n"
+            f"type: page\nformat_version: {FORMAT_VERSION}\n---\n\n"
+        )
         markdown += blocks_to_markdown(blocks)
 
         write_json(page_dir / "metadata.json", page)
@@ -306,6 +320,8 @@ class BackupRunner:
         database_id = database["id"]
         database_dir = snapshot_dir / "databases" / normalize_id(database_id)
         rows = self.client.query_database(database_id)
+        for row in rows:
+            self._hydrate_page_properties(row)
 
         write_json(database_dir / "database.json", database)
         write_json(database_dir / "rows.json", rows)
@@ -331,6 +347,44 @@ class BackupRunner:
             for row in rows
             if row.get("id")
         ]
+
+    def _hydrate_page_properties(self, page: dict[str, Any]) -> None:
+        page_id = page.get("id")
+        properties = page.get("properties")
+        if not page_id or not isinstance(properties, dict):
+            return
+        for name, prop in properties.items():
+            if not isinstance(prop, dict):
+                continue
+            prop_type = prop.get("type")
+            if prop_type not in _PAGINATED_PROPERTY_TYPES:
+                continue
+            items = prop.get(prop_type)
+            if not isinstance(items, list):
+                continue
+            # Relation values carry an explicit has_more flag; the other list
+            # types only reveal truncation by hitting the 25-reference cap.
+            if not prop.get("has_more") and len(items) < _PROPERTY_REF_LIMIT:
+                continue
+            prop_id = prop.get("id")
+            if not prop_id:
+                continue
+            try:
+                results = self.client.retrieve_page_property_items(page_id, prop_id)
+            except NotionApiError as exc:
+                self._record_warning(
+                    "property_pagination_failed",
+                    page_id,
+                    f"Could not fetch the complete {prop_type} value for property {name!r}; "
+                    f"keeping the first {_PROPERTY_REF_LIMIT} references: {exc}",
+                    {"property": name, "property_type": prop_type},
+                )
+                continue
+            complete = [item[prop_type] for item in results if isinstance(item, dict) and prop_type in item]
+            if len(complete) >= len(items):
+                prop[prop_type] = complete
+                if "has_more" in prop:
+                    prop["has_more"] = False
 
     def _fetch_block_tree(self, block_id: str) -> list[dict[str, Any]]:
         root_blocks = self._safe_list_block_children(block_id, owner_id=block_id)
@@ -555,6 +609,9 @@ def _is_linked_view_error(exc: NotionApiError) -> bool:
 def _write_manifest_with_size(snapshot_dir: Path, manifest: dict[str, Any]) -> None:
     manifest_path = snapshot_dir / "manifest.json"
 
+    # size_bytes contract: the snapshot payload excluding manifest.json itself.
+    # Measuring before the manifest exists matches the storage-step rewrite,
+    # which subtracts the manifest file from the directory total.
     total_bytes = directory_size_bytes(snapshot_dir)
 
     manifest.update(

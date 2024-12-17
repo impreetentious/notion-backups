@@ -88,6 +88,11 @@ class NotionClient:
     def retrieve_page(self, page_id: str) -> dict[str, Any]:
         return self._request("GET", f"/pages/{page_id}")
 
+    def retrieve_page_property_items(self, page_id: str, property_id: str) -> list[dict[str, Any]]:
+        # Property ids can contain URL-reserved characters such as "%" and ":".
+        encoded_property_id = parse.quote(property_id, safe="")
+        return list(self._paginate("GET", f"/pages/{page_id}/properties/{encoded_property_id}"))
+
     def retrieve_database(self, database_id: str) -> dict[str, Any]:
         return self._request("GET", f"/databases/{database_id}")
 

@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from notion_backup.runner import BackupRunner, QueueItem, _queue_children
+from notion_backup.notion_client import NotionApiError
+from notion_backup.runner import BackupRunner, _queue_children
 
 
 class QueueChildrenRootTaggingTests(unittest.TestCase):
@@ -204,6 +205,147 @@ def _full_run_config(output_dir: Path) -> dict:
         "storage": {"external_archive": {"enabled": False}},
         "compression": {"enabled": False},
     }
+
+
+class _HydrationFakeClient:
+    """Serves complete property values for the paginated property-item endpoint."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[tuple[str, str]] = []
+
+    def retrieve_page_property_items(self, page_id: str, property_id: str) -> list[dict]:
+        self.calls.append((page_id, property_id))
+        if self.fail:
+            raise NotionApiError("HTTP 500", status_code=500)
+        if property_id == "rel%3Aid":
+            return [
+                {"object": "property_item", "type": "relation", "relation": {"id": f"rel-{i}"}}
+                for i in range(30)
+            ]
+        if property_id == "notes-id":
+            return [
+                {"object": "property_item", "type": "rich_text", "rich_text": {"plain_text": str(i)}}
+                for i in range(27)
+            ]
+        raise AssertionError(f"Unexpected property fetch: {property_id}")
+
+
+def _truncated_page() -> dict:
+    return {
+        "id": "page-hydrate",
+        "properties": {
+            "Linked": {
+                "id": "rel%3Aid",
+                "type": "relation",
+                "relation": [{"id": f"rel-{i}"} for i in range(25)],
+                "has_more": True,
+            },
+            "Notes": {
+                "id": "notes-id",
+                "type": "rich_text",
+                "rich_text": [{"plain_text": str(i)} for i in range(25)],
+            },
+            "Status": {"id": "status-id", "type": "select", "select": {"name": "Done"}},
+            "Short": {"id": "short-id", "type": "relation", "relation": [{"id": "rel-a"}]},
+        },
+    }
+
+
+class PropertyHydrationTests(unittest.TestCase):
+    def test_truncated_list_properties_are_replaced_with_complete_values(self) -> None:
+        client = _HydrationFakeClient()
+        runner = BackupRunner(config={}, client=client)
+        page = _truncated_page()
+
+        runner._hydrate_page_properties(page)
+
+        self.assertEqual(len(page["properties"]["Linked"]["relation"]), 30)
+        self.assertFalse(page["properties"]["Linked"]["has_more"])
+        self.assertEqual(len(page["properties"]["Notes"]["rich_text"]), 27)
+        self.assertEqual(page["properties"]["Notes"]["rich_text"][26], {"plain_text": "26"})
+        # Only the two truncated properties are re-fetched.
+        self.assertEqual(
+            sorted(client.calls), sorted([("page-hydrate", "rel%3Aid"), ("page-hydrate", "notes-id")])
+        )
+        self.assertEqual(page["properties"]["Short"]["relation"], [{"id": "rel-a"}])
+        self.assertEqual(runner.warnings, [])
+
+    def test_hydration_failure_keeps_truncated_values_and_records_a_warning(self) -> None:
+        client = _HydrationFakeClient(fail=True)
+        runner = BackupRunner(config={}, client=client)
+        page = _truncated_page()
+
+        runner._hydrate_page_properties(page)
+
+        self.assertEqual(len(page["properties"]["Linked"]["relation"]), 25)
+        self.assertTrue(page["properties"]["Linked"]["has_more"])
+        codes = {warning["code"] for warning in runner.warnings}
+        self.assertEqual(codes, {"property_pagination_failed"})
+        self.assertEqual(len(runner.warnings), 2)
+
+
+class HydratedFullRunClient(FullRunFakeClient):
+    """Full-run fake where one database row carries a truncated relation."""
+
+    def __init__(self) -> None:
+        self.property_calls: list[tuple[str, str]] = []
+
+    def query_database(self, database_id: str) -> list[dict]:
+        rows = super().query_database(database_id)
+        rows[0]["properties"] = {
+            "Linked": {
+                "id": "rel-prop",
+                "type": "relation",
+                "relation": [{"id": f"r{i}"} for i in range(25)],
+                "has_more": True,
+            }
+        }
+        return rows
+
+    def retrieve_page_property_items(self, page_id: str, property_id: str) -> list[dict]:
+        self.property_calls.append((page_id, property_id))
+        return [
+            {"object": "property_item", "type": "relation", "relation": {"id": f"r{i}"}}
+            for i in range(40)
+        ]
+
+
+class FullRunHydrationTests(unittest.TestCase):
+    def test_truncated_database_row_properties_are_hydrated_in_rows_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            client = HydratedFullRunClient()
+            snapshot_dir = BackupRunner(_full_run_config(output_dir), client).run()
+            rows = json.loads(
+                (snapshot_dir / "databases" / "dbtasks" / "rows.json").read_text(encoding="utf-8")
+            )
+
+        linked = rows[0]["properties"]["Linked"]
+        self.assertEqual(len(linked["relation"]), 40)
+        self.assertFalse(linked["has_more"])
+        self.assertEqual(client.property_calls, [(ROW_ONE_ID, "rel-prop")])
+
+
+class QuotedTitleFakeClient(FullRunFakeClient):
+    def retrieve_page(self, page_id: str) -> dict:
+        page = super().retrieve_page(page_id)
+        if page_id == CHILD_PAGE_ID:
+            title = 'Roadmap: Q3 "beta"'
+            page["properties"]["title"]["title"] = [
+                {"type": "text", "plain_text": title, "text": {"content": title}}
+            ]
+        return page
+
+
+class FrontMatterQuotingTests(unittest.TestCase):
+    def test_titles_with_colons_and_quotes_stay_valid_yaml_scalars(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            snapshot_dir = BackupRunner(_full_run_config(output_dir), QuotedTitleFakeClient()).run()
+            content = (snapshot_dir / "pages" / "childpage1" / "content.md").read_text(encoding="utf-8")
+
+        self.assertIn('title: "Roadmap: Q3 \\"beta\\""', content)
 
 
 class CountsByRootManifestTests(unittest.TestCase):

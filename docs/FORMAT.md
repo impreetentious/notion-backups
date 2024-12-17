@@ -73,7 +73,7 @@ NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz
 The backup preserves, as far as the Notion API exposes it:
 
 - page IDs, database IDs, and block IDs
-- page titles and properties
+- page titles and properties, including complete title/rich-text/people/relation values fetched through the paginated property-item endpoint when a page object truncates them at 25 references (rollup and formula values stay as returned in the page object)
 - database schemas and row/page objects
 - parent references
 - child page and child database links
