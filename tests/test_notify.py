@@ -115,6 +115,18 @@ class NotifyStatusTests(unittest.TestCase):
         self.assertEqual(payload["status_label"], "Success")
         self.assertIn("Status: Success", _email_body(payload))
 
+    def test_payload_uses_configured_timezone_for_timestamp(self) -> None:
+        payload = _payload(
+            "success",
+            "",
+            "",
+            {"status": "success", "created_at": "2026-05-29T02:34:46+00:00", "warnings": [], "errors": []},
+            {"backup": {"timezone": "America/New_York"}},
+        )
+
+        # 02:34 UTC is the previous evening in New York (EDT), not IST.
+        self.assertEqual(payload["timestamp"], "28-05-2026_22:34:46_EDT")
+
 
 if __name__ == "__main__":
     unittest.main()

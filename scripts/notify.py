@@ -56,14 +56,13 @@ def _payload(
     warnings = manifest.get("warnings", []) + manifest.get("storage", {}).get("warnings", [])
     errors = manifest.get("errors", []) + manifest.get("storage", {}).get("errors", [])
     effective_status = _notification_status(status, manifest_status, warnings, errors)
+    tz = ZoneInfo((config or {}).get("backup", {}).get("timezone", "Asia/Kolkata"))
     backup_ts_raw = (
         manifest.get("timestamp")
         or manifest.get("created_at")
-        or datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+        or datetime.now(tz).isoformat()
     )
-    backup_dt = datetime.fromisoformat(backup_ts_raw.replace("Z", "+00:00")).astimezone(
-        ZoneInfo("Asia/Kolkata")
-    )
+    backup_dt = datetime.fromisoformat(backup_ts_raw.replace("Z", "+00:00")).astimezone(tz)
 
     backup_size = (
         manifest.get("size_human")

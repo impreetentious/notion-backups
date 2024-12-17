@@ -27,10 +27,8 @@ def directory_size_bytes(path: Path) -> int:
 def format_bytes(size: int) -> str:
     units = ["B", "KB", "MB", "GB"]
     value = float(size)
-    for unit in units:
-        if value < 1024 or unit == units[-1]:
-            if unit == "B":
-                return f"{int(value)} {unit}"
-            return f"{value:.2f} {unit}"
+    for unit in units[:-1]:
+        if value < 1024:
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.2f} {unit}"
         value /= 1024
-    return f"{size} B"
+    return f"{value:.2f} {units[-1]}"

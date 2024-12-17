@@ -2,7 +2,7 @@
 
 Personal, automated cron-based backup system for exporting Notion snapshots.
 
-**Release version:** `v1.0.1`
+**Release version:** `v1.0.2`
 
 ## What It Does
 
@@ -113,6 +113,16 @@ Email contains:
 - warning and error counts/details
 
 Webhook notifications are still available by enabling `generic_webhook` in `config/backup_config.json`.
+
+## Development
+
+The backup logic is pure-stdlib Python; the only external binary is `rclone`. Run the unit tests from the repository root with the package sources on `PYTHONPATH`:
+
+```bash
+PYTHONPATH=scripts python3 -m unittest discover -s tests
+```
+
+The same suite runs in CI on every push and pull request via `.github/workflows/tests.yml`.
 
 ## Operational Notes
 

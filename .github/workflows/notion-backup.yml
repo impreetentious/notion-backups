@@ -27,8 +27,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Show trigger context
         env:
@@ -48,10 +46,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install rclone
         run: |
           set -euo pipefail
-          python -m pip install --upgrade pip
           sudo apt-get update
           sudo apt-get install -y rclone
 
