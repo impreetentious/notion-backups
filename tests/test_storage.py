@@ -78,7 +78,6 @@ class StorageTests(unittest.TestCase):
                 stdout="",
                 stderr='oauth2: "invalid_grant" "Token has been expired or revoked."',
             ),
-            subprocess.CompletedProcess(["rclone", "lsjson"], returncode=1, stdout="", stderr="could not list"),
         ]
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp) / "exports"
@@ -108,11 +107,14 @@ class StorageTests(unittest.TestCase):
                 result.warnings,
                 [
                     "Upload failed for NB_20260501_020000+0530; it was not archived.",
-                    "Could not list external archives for retention cleanup.",
+                    "Remote retention cleanup was skipped because this run did not upload a new archive successfully.",
                 ],
             )
             self.assertEqual(result.errors, ['oauth2: "invalid_grant" "Token has been expired or revoked."'])
             self.assertTrue((output_dir / "NB_20260501_020000+0530").exists())
+            # The failed upload must not trigger remote retention deletion.
+            called_subcommands = [call.args[0][1] for call in run_mock.call_args_list]
+            self.assertEqual(called_subcommands, ["copyto"])
 
     @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
     @patch("notion_backup.storage._run")
@@ -121,7 +123,6 @@ class StorageTests(unittest.TestCase):
             subprocess.CompletedProcess(
                 ["rclone", "copyto"], returncode=1, stdout="", stderr="upload boom"
             ),
-            subprocess.CompletedProcess(["rclone", "lsjson"], returncode=0, stdout="[]", stderr=""),
         ]
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp) / "exports"
@@ -271,6 +272,207 @@ class StorageTests(unittest.TestCase):
             seen["storage"]["uploaded_to_external"],
             ["notionbackups:NotionBackups/NB_20260501_020000+0530.tar.gz"],
         )
+
+
+    @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
+    @patch("notion_backup.storage._run")
+    def test_successful_upload_retains_the_current_manifest_for_notifications(self, run_mock, _which_mock) -> None:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stdout = "[]"
+        run_mock.return_value.stderr = ""
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            name = "NB_20260501_020000+0530"
+            snapshot = output_dir / name
+            snapshot.mkdir(parents=True)
+            (snapshot / "payload.json").write_bytes(b"0123456789")
+            (snapshot / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "created_at": _created_at_from_name(name),
+                        "format_version": "2.3.0",
+                        "storage": {"destination": "github", "status": "pending", "warnings": [], "errors": []},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = manage_storage(
+                {
+                    "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
+                    "storage": {
+                        "external_archive": {
+                            "enabled": True,
+                            "remote": "notionbackups",
+                            "folder": "NotionBackups",
+                            "delete_remote_older_than_retention": True,
+                        },
+                    },
+                },
+                current_snapshot_dir=snapshot,
+            )
+
+            # The uploaded snapshot is removed from the runner, but the manifest
+            # survives in memory so notifications keep real metadata.
+            self.assertEqual(result.status, "success")
+            self.assertFalse(snapshot.exists())
+            manifest = result.current_manifest
+            self.assertEqual(manifest["format_version"], "2.3.0")
+            self.assertEqual(manifest["size_bytes"], 10)
+            self.assertEqual(manifest["storage"]["status"], "success")
+            self.assertEqual(manifest["storage"]["destination"], "github+google_drive")
+            self.assertEqual(
+                manifest["storage"]["uploaded_to_external"],
+                ["notionbackups:NotionBackups/NB_20260501_020000+0530.tar.gz"],
+            )
+
+    @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
+    @patch("notion_backup.storage._run")
+    def test_cleanup_is_skipped_when_the_current_snapshot_upload_fails(self, run_mock, _which_mock) -> None:
+        run_mock.side_effect = [
+            subprocess.CompletedProcess(["rclone", "copyto"], returncode=1, stdout="", stderr="quota"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            name = "NB_20260501_020000+0530"
+            snapshot = output_dir / name
+            snapshot.mkdir(parents=True)
+            (snapshot / "manifest.json").write_text(json.dumps({"created_at": _created_at_from_name(name)}), encoding="utf-8")
+
+            result = manage_storage(
+                {
+                    "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
+                    "storage": {
+                        "external_archive": {
+                            "enabled": True,
+                            "remote": "notionbackups",
+                            "folder": "NotionBackups",
+                            "delete_remote_older_than_retention": True,
+                        },
+                    },
+                },
+                current_snapshot_dir=snapshot,
+            )
+
+            self.assertEqual(result.status, "warning")
+            called_subcommands = [call.args[0][1] for call in run_mock.call_args_list]
+            self.assertEqual(called_subcommands, ["copyto"])
+            self.assertIn(
+                "Remote retention cleanup was skipped because this run did not upload a new archive successfully.",
+                result.warnings,
+            )
+
+    @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
+    @patch("notion_backup.storage._run")
+    def test_cleanup_listing_failure_downgrades_status_to_warning(self, run_mock, _which_mock) -> None:
+        run_mock.side_effect = [
+            subprocess.CompletedProcess(["rclone", "lsjson"], returncode=1, stdout="", stderr="could not list"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            output_dir.mkdir(parents=True)
+
+            result = manage_storage(
+                {
+                    "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
+                    "storage": {
+                        "external_archive": {
+                            "enabled": True,
+                            "remote": "notionbackups",
+                            "folder": "NotionBackups",
+                            "delete_remote_older_than_retention": True,
+                        },
+                    },
+                }
+            )
+
+            self.assertEqual(result.status, "warning")
+            self.assertEqual(result.warnings, ["Could not list external archives for retention cleanup."])
+
+    @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
+    @patch("notion_backup.storage._run")
+    def test_snapshot_without_a_manifest_is_never_archived(self, run_mock, _which_mock) -> None:
+        run_mock.return_value.returncode = 0
+        run_mock.return_value.stdout = "[]"
+        run_mock.return_value.stderr = ""
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            name = "NB_20260501_020000+0530"
+            incomplete = output_dir / name
+            incomplete.mkdir(parents=True)
+            (incomplete / "half-written.json").write_text("{}", encoding="utf-8")
+
+            result = manage_storage(
+                {
+                    "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
+                    "storage": {
+                        "external_archive": {
+                            "enabled": True,
+                            "remote": "notionbackups",
+                            "folder": "NotionBackups",
+                            "delete_remote_older_than_retention": True,
+                        },
+                    },
+                }
+            )
+
+            self.assertEqual(result.status, "warning")
+            self.assertTrue(any("has no manifest.json" in warning for warning in result.warnings))
+            self.assertTrue(incomplete.exists())
+            called_subcommands = [call.args[0][1] for call in run_mock.call_args_list]
+            self.assertNotIn("copyto", called_subcommands)
+
+    @patch("notion_backup.storage.shutil.which", return_value="/usr/bin/rclone")
+    @patch("notion_backup.storage._run")
+    def test_stale_prebuilt_archive_is_rebuilt_before_upload(self, run_mock, _which_mock) -> None:
+        name = "NB_20260501_020000+0530"
+        seen: dict = {}
+
+        def _fake_run(command):
+            if command[1] == "copyto":
+                # A stale pre-existing archive would fail to open here; the
+                # uploaded tar must be a fresh build of the finalized snapshot.
+                with tarfile.open(command[2], "r:gz") as tar:
+                    member = next(m for m in tar.getmembers() if m.name.endswith("manifest.json"))
+                    seen["storage"] = json.loads(tar.extractfile(member).read().decode("utf-8"))["storage"]
+                return subprocess.CompletedProcess(command, returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(command, returncode=0, stdout="[]", stderr="")
+
+        run_mock.side_effect = _fake_run
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            archive_dir = Path(tmp) / "archives"
+            snapshot = output_dir / name
+            snapshot.mkdir(parents=True)
+            (snapshot / "manifest.json").write_text(
+                json.dumps({"created_at": _created_at_from_name(name), "storage": {"status": "pending"}}),
+                encoding="utf-8",
+            )
+            archive_dir.mkdir(parents=True)
+            (archive_dir / f"{name}.tar.gz").write_bytes(b"stale bytes, not a tar")
+
+            result = manage_storage(
+                {
+                    "backup": {"output_dir": str(output_dir), "archive_dir": str(archive_dir)},
+                    "storage": {
+                        "external_archive": {
+                            "enabled": True,
+                            "remote": "notionbackups",
+                            "folder": "NotionBackups",
+                            "delete_remote_older_than_retention": True,
+                        },
+                    },
+                },
+                current_snapshot_dir=snapshot,
+            )
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(seen["storage"]["status"], "success")
+        self.assertEqual(seen["storage"]["destination"], "github+google_drive")
 
 
 def _created_at_from_name(name: str) -> str:

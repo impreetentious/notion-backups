@@ -43,7 +43,7 @@ NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz
 - `created_at` and `timestamp`
 - `notion_api_version`
 - `status`: `success`, `warning`, or `partial`
-- `size_bytes` and `size_human`
+- `size_bytes` and `size_human`: the snapshot payload size excluding `manifest.json` itself; the initial write and later storage rewrites use the same contract
 - `storage.destination` and storage warnings/errors
 - `roots`
 - `counts`

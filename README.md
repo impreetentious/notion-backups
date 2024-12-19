@@ -2,7 +2,7 @@
 
 Personal, automated cron-based backup system for exporting Notion snapshots.
 
-**Release version:** `v1.1.0`
+**Release version:** `v1.1.1`
 
 ## What It Does
 
@@ -58,7 +58,7 @@ Use **Actions -> Notion Backup -> Run Workflow** for a manual run.
 5. A versioned snapshot is written under `exports/NB_YYYYMMDD_HHMMSS+0530/`.
 6. The manifest records status, size, format version, timestamp, warnings/errors, restore map and storage metadata.
 7. `scripts/manage_storage.py` updates the final manifest with archive status and sends snapshots to Google Drive. This runs whether the upload succeeds or fails, so a failed Drive upload is always reflected in the manifest instead of silently keeping a stale "pending" status.
-8. GitHub Actions sends notifications after the final manifest has the completed size and storage details.
+8. GitHub Actions runs notifications after storage handling. The finalized manifest is retained for the notification step even after a successfully uploaded snapshot is removed from the runner, so success emails and summaries carry the real size, format and storage metadata.
 
 ## Google Drive Setup
 
@@ -75,7 +75,7 @@ base64 -i ~/.config/rclone/rclone.conf
 
 5. Add the resulting value as the GitHub secret `RCLONE_CONFIG_B64`.
 
-Snapshots are uploaded to `notionbackups:NotionBackups/`. Remote archives older than 30 days are deleted automatically when rclone can list and delete them.
+Snapshots are uploaded to `notionbackups:NotionBackups/`. Remote archives older than 30 days are deleted automatically after the current snapshot has been uploaded successfully; if the upload fails, cleanup is skipped so the existing archives are preserved.
 
 If Drive is not configured, the backup still runs and the notification reports a storage warning, but the snapshot exists only on the ephemeral Actions runner and is discarded when the job ends — no durable copy is kept. The same is true if Drive is configured but the upload itself fails (expired credentials, misconfigured remote, etc.) — both the success and failure notification steps read the storage summary, so a failed archival is never reported as a clean run.
 
@@ -97,7 +97,7 @@ exports/NB_YYYYMMDD_HHMMSS+0530/
 
 `manifest.json` is the restore entry point. It records format version, run metadata, object counts, original Notion IDs, parent references, file paths, size, status, storage destination, linked-view references and any warnings/errors from recoverable traversal failures.
 
-`size_bytes`/`size_human` are computed by one shared helper used at both the initial snapshot write and the storage finalize step, so the reported size is calculated the same way regardless of when it was last updated.
+`size_bytes`/`size_human` measure the snapshot payload excluding `manifest.json` itself, at both the initial snapshot write and the storage finalize step, so the reported size is stable regardless of when the manifest was last rewritten.
 
 ## Notifications
 
