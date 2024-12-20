@@ -2,7 +2,7 @@
 
 Personal, automated cron-based backup system for exporting Notion snapshots.
 
-**Release version:** `v1.2.0`
+**Release version:** `v1.3.0`
 
 ## What It Does
 

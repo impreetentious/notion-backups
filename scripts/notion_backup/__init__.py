@@ -1,2 +1,2 @@
 FORMAT_NAME = "notion-hybrid-backup"
-FORMAT_VERSION = "2.3.0"
+FORMAT_VERSION = "3.0.0"
