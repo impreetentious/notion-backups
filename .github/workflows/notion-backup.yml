@@ -13,10 +13,10 @@ permissions:
   contents: read
   actions: read
 
+# config/backup_config.json is the single authority for retention and
+# compression settings; do not duplicate them as env overrides here.
 env:
   BACKUP_CONFIG: config/backup_config.json
-  RETENTION_DAYS: "30"
-  BACKUP_COMPRESSION_ENABLED: "false"
 
 jobs:
   backup:
@@ -82,6 +82,7 @@ jobs:
             --summary-file storage-summary.json
 
       - name: Notify success
+        id: notify_success
         if: success()
         env:
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
@@ -100,7 +101,9 @@ jobs:
             --storage-summary storage-summary.json \
             --message "Notion backup completed."
       - name: Notify failure
-        if: failure()
+        # Do not report "backup failed" when the backup and storage steps
+        # succeeded and only the success notification itself failed.
+        if: failure() && steps.notify_success.outcome != 'failure'
         env:
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}

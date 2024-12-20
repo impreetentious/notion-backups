@@ -2,11 +2,11 @@
 
 Personal, automated cron-based backup system for exporting Notion snapshots.
 
-**Release version:** `v1.1.2`
+**Release version:** `v1.2.0`
 
 ## What It Does
 
-- Runs automatically every Monday and Friday at `00:30 IST`.
+- Is scheduled by GitHub Actions every Monday and Friday for `00:30 IST`; GitHub may start scheduled jobs later under load.
 - Keeps a manual GitHub Actions trigger.
 - Reads from Notion only. It never creates, edits, moves, archives or deletes Notion content.
 - Paces outbound Notion API calls with a client-side limiter (default: 3 requests/sec, burst of 8) so the run stays under Notion's rate limits proactively, in addition to retrying rate-limited/server-error responses with backoff.
@@ -45,7 +45,7 @@ The workflow cron is in `.github/workflows/notion-backup.yml`:
 - cron: "00 19 * * 0,4"
 ```
 
-GitHub cron uses UTC. `19:00 UTC` on Sunday and Thursday is `00:30 IST` on Monday and Friday.
+GitHub cron uses UTC. `19:00 UTC` on Sunday and Thursday is the nominal `00:30 IST` schedule on Monday and Friday.
 
 Use **Actions -> Notion Backup -> Run Workflow** for a manual run.
 
@@ -123,10 +123,12 @@ The backup logic is pure-stdlib Python; the only external binary is `rclone`. Ru
 PYTHONPATH=scripts python3 -m unittest discover -s tests
 ```
 
-The same suite runs in CI on every push and pull request via `.github/workflows/tests.yml`.
+The same suite runs in CI on pushes to `main` and `nb-branch`, on every pull request, and on manual dispatch via `.github/workflows/tests.yml`.
 
 ## Operational Notes
 
-Human intervention should only be needed for expired credentials, Notion API changes, quota/rate-limit issues or deliberate config changes.
+Human intervention may be needed for expired credentials, Notion API changes, quota/rate-limit issues, deliberate config changes, or a missed/disabled schedule.
+
+The repository is currently public. GitHub automatically disables scheduled workflows in public repositories after 60 days without repository activity, and an in-workflow notification cannot report a job that never starts. Making the repository private removes that auto-disable risk; until then, keep an eye on the Actions schedule.
 
 - Secondary linked database view wrappers are recorded as `linked_database_view` manifest objects instead of warnings because they contain no unique row data and cannot be queried through Notion's public API. Genuine inaccessible child databases still surface as warnings. Fatal root resolution failures, root page metadata failures and config errors stop the run because there is no reliable root snapshot to commit.
