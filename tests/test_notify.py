@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+import ssl
 import unittest
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from notify import _email_body, _payload, _resolve_manifest
+from notify import _email_body, _payload, _resolve_manifest, _send_email, _send_webhook
 
 class NotifyStatusTests(unittest.TestCase):
     def test_success_payload_uses_manifest_size_and_google_drive_label(self) -> None:
@@ -126,6 +129,43 @@ class NotifyStatusTests(unittest.TestCase):
 
         # 02:34 UTC is the previous evening in New York (EDT), not IST.
         self.assertEqual(payload["timestamp"], "28-05-2026_22:34:46_EDT")
+
+
+def _minimal_payload() -> dict:
+    return {"status_label": "Success", "warnings": [], "errors": []}
+
+
+class ChannelCredentialTests(unittest.TestCase):
+    @patch("notify.smtplib.SMTP")
+    def test_email_starttls_uses_a_certificate_verifying_context(self, smtp_mock) -> None:
+        env = {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_USERNAME": "user",
+            "SMTP_PASSWORD": "secret",
+            "NOTIFY_EMAIL_TO": "owner@example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            sent = _send_email({"type": "smtp_email"}, _minimal_payload())
+
+        self.assertTrue(sent)
+        smtp = smtp_mock.return_value.__enter__.return_value
+        smtp.starttls.assert_called_once()
+        context = smtp.starttls.call_args.kwargs["context"]
+        self.assertIsInstance(context, ssl.SSLContext)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
+    def test_enabled_email_channel_fails_when_required_settings_are_missing(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            sent = _send_email({"type": "smtp_email"}, _minimal_payload())
+
+        self.assertFalse(sent)
+
+    def test_enabled_webhook_channel_fails_when_url_is_missing(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            sent = _send_webhook({"type": "webhook"}, _minimal_payload())
+
+        self.assertFalse(sent)
 
 
 if __name__ == "__main__":

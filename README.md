@@ -2,7 +2,7 @@
 
 Personal, automated cron-based backup system for exporting Notion snapshots.
 
-**Release version:** `v1.1.1`
+**Release version:** `v1.1.2`
 
 ## What It Does
 
@@ -101,7 +101,7 @@ exports/NB_YYYYMMDD_HHMMSS+0530/
 
 ## Notifications
 
-Every run writes a GitHub Actions step summary and attempts email notification.
+When the workflow reaches the notification step, it writes a GitHub Actions step summary and attempts email. An enabled channel whose required settings are missing fails the notification step instead of passing silently, so a misconfigured channel is visible in the workflow run.
 
 Email contains:
 

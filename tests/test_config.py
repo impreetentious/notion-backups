@@ -69,6 +69,43 @@ class EnvOverrideTests(unittest.TestCase):
         self.assertNotIn("page_size", notion)
 
 
+class ValidationRejectionTests(unittest.TestCase):
+    def _load(self, tmp: str, config: dict):
+        config_path = Path(tmp) / "config.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        return load_config(config_path)
+
+    def test_all_top_level_pages_mode_rejects_enabled_roots(self) -> None:
+        config = {
+            "backup": {
+                "scope": {"mode": "all_top_level_pages"},
+                "roots": [{"type": "page", "id": "abc", "enabled": True}],
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as ctx:
+                self._load(tmp, config)
+        self.assertIn("all_top_level_pages", str(ctx.exception))
+
+    def test_all_top_level_pages_mode_allows_disabled_roots(self) -> None:
+        config = {
+            "backup": {
+                "scope": {"mode": "all_top_level_pages"},
+                "roots": [{"type": "page", "id": "abc", "enabled": False}],
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            loaded = self._load(tmp, config)
+        self.assertEqual(loaded["backup"]["scope"]["mode"], "all_top_level_pages")
+
+    def test_database_roots_require_an_explicit_id(self) -> None:
+        config = {"backup": {"roots": [{"type": "database", "title": "Tasks"}]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as ctx:
+                self._load(tmp, config)
+        self.assertIn("database roots need id or id_env", str(ctx.exception))
+
+
 ROOT_PAGE_ID = "351733f6-271e-811f-bd0f-fd7b50bb8cfa"
 LINKED_VIEW_ID = "df7733f6-271e-8300-b4f5-0191b83c0eb8"
 

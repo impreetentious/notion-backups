@@ -49,6 +49,10 @@ def _validate_config(config: dict[str, Any], path: Path) -> None:
             continue
         if root.get("type") not in {"page", "database"}:
             raise ValueError(f"{path}: backup.roots[{index}].type must be page or database")
+        if root.get("type") == "database" and not root.get("id") and not root.get("id_env"):
+            # The runner resolves title-only roots for pages only; a title-only
+            # database root would pass validation and then fail mid-run.
+            raise ValueError(f"{path}: backup.roots[{index}] database roots need id or id_env")
         if not root.get("id") and not root.get("id_env") and not root.get("title"):
             raise ValueError(f"{path}: backup.roots[{index}] needs id, id_env, or title")
 
@@ -57,6 +61,13 @@ def _validate_config(config: dict[str, Any], path: Path) -> None:
         mode = scope.get("mode", "configured_roots")
         if mode not in {"configured_roots", "all_top_level_pages"}:
             raise ValueError(f"{path}: backup.scope.mode must be configured_roots or all_top_level_pages")
+        if mode == "all_top_level_pages" and any(
+            isinstance(root, dict) and root.get("enabled", True) for root in roots
+        ):
+            raise ValueError(
+                f"{path}: backup.scope.mode=all_top_level_pages conflicts with enabled backup.roots; "
+                "disable the roots or use configured_roots"
+            )
 
     retention = config.get("retention", {})
     if retention.get("enabled", True):

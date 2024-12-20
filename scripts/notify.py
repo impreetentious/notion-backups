@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import smtplib
+import ssl
 import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -181,8 +182,8 @@ def _send_webhook(channel: dict[str, Any], payload: dict[str, Any]) -> bool:
     url_env = channel.get("url_env", "NOTIFY_WEBHOOK_URL")
     url = os.getenv(url_env, "")
     if not url:
-        print(f"Webhook notification skipped because {url_env} is not set")
-        return True
+        print(f"Webhook notification failed because {url_env} is not set for an enabled channel", file=sys.stderr)
+        return False
 
     body = json.dumps(payload, sort_keys=True).encode("utf-8")
     req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
@@ -210,10 +211,19 @@ def _send_email(channel: dict[str, Any], payload: dict[str, Any]) -> bool:
         "on",
     }
 
-    missing = [name for name, value in {"SMTP_HOST": host, "SMTP_USERNAME": username, "SMTP_PASSWORD": password, "NOTIFY_EMAIL_TO": to_addr}.items() if not value]
+    required = {
+        channel.get("host_env", "SMTP_HOST"): host,
+        channel.get("username_env", "SMTP_USERNAME"): username,
+        channel.get("password_env", "SMTP_PASSWORD"): password,
+        channel.get("to_env", "NOTIFY_EMAIL_TO"): to_addr,
+    }
+    missing = [name for name, value in required.items() if not value]
     if missing:
-        print(f"Email notification skipped because required settings are missing: {', '.join(missing)}")
-        return True
+        print(
+            f"Email notification failed because required settings are missing for an enabled channel: {', '.join(missing)}",
+            file=sys.stderr,
+        )
+        return False
 
     message = EmailMessage()
     message["From"] = from_addr
@@ -224,7 +234,9 @@ def _send_email(channel: dict[str, Any], payload: dict[str, Any]) -> bool:
     try:
         with smtplib.SMTP(host, port, timeout=30) as smtp:
             if use_tls:
-                smtp.starttls()
+                # smtplib's implicit default context does not verify the server
+                # certificate; credentials must only go to an authenticated peer.
+                smtp.starttls(context=ssl.create_default_context())
             smtp.login(username, password)
             smtp.send_message(message)
         return True
