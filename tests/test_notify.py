@@ -167,6 +167,66 @@ class ChannelCredentialTests(unittest.TestCase):
 
         self.assertFalse(sent)
 
+    @patch("notify.smtplib.SMTP")
+    def test_a_non_numeric_port_is_reported_instead_of_raising(self, smtp_mock) -> None:
+        env = {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "smtp.example.com:587",
+            "SMTP_USERNAME": "user",
+            "SMTP_PASSWORD": "secret",
+            "NOTIFY_EMAIL_TO": "owner@example.com",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            sent = _send_email({"type": "smtp_email"}, _minimal_payload())
+
+        # A bad port must not abort main() before the remaining channels run.
+        self.assertFalse(sent)
+        smtp_mock.assert_not_called()
+
+
+class DamagedMetadataTests(unittest.TestCase):
+    """A run killed mid-write must still produce a notification."""
+
+    def test_truncated_manifest_falls_back_to_the_storage_summary(self) -> None:
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            manifest_path.write_text('{"status": "success", "siz', encoding="utf-8")
+            summary_path = Path(tmp) / "storage-summary.json"
+            summary_path.write_text('{"manifest":{"size_human":"4.00 KB"}}', encoding="utf-8")
+
+            manifest = _resolve_manifest(str(manifest_path), str(summary_path))
+
+        self.assertEqual(manifest["size_human"], "4.00 KB")
+
+    def test_both_files_unreadable_degrade_to_an_empty_manifest(self) -> None:
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            manifest_path.write_text("not json at all", encoding="utf-8")
+            summary_path = Path(tmp) / "storage-summary.json"
+            summary_path.write_text("[]", encoding="utf-8")
+
+            manifest = _resolve_manifest(str(manifest_path), str(summary_path))
+
+        self.assertEqual(manifest, {})
+
+    def test_failure_payload_is_still_produced_without_any_manifest(self) -> None:
+        payload = _payload("failure", "Notion backup failed.", "", {})
+
+        self.assertEqual(payload["status"], "failed")
+        self.assertIn("Status: Failed", _email_body(payload))
+
+    def test_an_unparseable_timestamp_does_not_break_the_payload(self) -> None:
+        payload = _payload(
+            "success",
+            "",
+            "",
+            {"status": "success", "created_at": "18/05/2026 02:25", "warnings": [], "errors": []},
+            {"backup": {"timezone": "Asia/Kolkata"}},
+        )
+
+        self.assertEqual(payload["status"], "success")
+        self.assertTrue(payload["timestamp"].endswith("_IST"))
+
 
 if __name__ == "__main__":
     unittest.main()

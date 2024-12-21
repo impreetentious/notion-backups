@@ -11,22 +11,48 @@ from notion_backup.config import _apply_env_overrides, enabled_roots, load_confi
 from notion_backup.notion_client import NotionApiError
 from notion_backup.runner import BackupRunner
 
-class ConfigTests(unittest.TestCase):
-    def test_configured_roots_are_the_four_master_pages(self) -> None:
-        config = load_config("config/backup_config.json")
-        roots = enabled_roots(config)
+SHIPPED_CONFIG = Path(__file__).resolve().parent.parent / "config" / "backup_config.json"
 
-        self.assertEqual(
-            [root["title"] for root in roots],
-            [
-                "Sage Sanctuary 🌿",
-                "Command Centre 🚀",
-                "Ground Zero 🌪️",
-                "Master Control ⚡️",
-            ],
-        )
+
+class ShippedConfigTests(unittest.TestCase):
+    """The committed config must load, validate, and be usable by the runner.
+
+    Assertions stay structural so that repointing the roots at a different
+    workspace -- the documented way to use this repo -- does not fail CI.
+    """
+
+    def test_shipped_config_loads_and_passes_validation(self) -> None:
+        config = load_config(SHIPPED_CONFIG)
+
         self.assertEqual(config["backup"]["scope"]["mode"], "configured_roots")
-        self.assertNotIn("Clarity", json.dumps(config))
+        self.assertFalse(config["backup"]["include_all_accessible"])
+
+    def test_every_enabled_root_is_resolvable_by_the_runner(self) -> None:
+        roots = enabled_roots(load_config(SHIPPED_CONFIG))
+
+        self.assertTrue(roots, "the shipped config must define at least one enabled root")
+        for root in roots:
+            with self.subTest(root=root.get("title") or root.get("id")):
+                self.assertIn(root["type"], {"page", "database"})
+                # _root_to_queue_item needs an id, an id_env, or (pages only) a title.
+                self.assertTrue(
+                    root.get("id") or root.get("id_env") or (root["type"] == "page" and root.get("title")),
+                    "root cannot be resolved to a Notion object",
+                )
+
+    def test_notification_channels_reference_env_names_and_never_inline_secrets(self) -> None:
+        # Credentials must arrive through the environment; the committed config
+        # may only name the variables that carry them.
+        config = load_config(SHIPPED_CONFIG)
+        serialized = json.dumps(config)
+        for token_prefix in ("secret_", "ntn_"):
+            self.assertNotIn(token_prefix, serialized, "a Notion token prefix leaked into the config")
+
+        for channel in config["notifications"]["channels"]:
+            with self.subTest(channel=channel.get("name")):
+                for key, value in channel.items():
+                    if key.endswith("_env"):
+                        self.assertRegex(value, r"^[A-Z][A-Z0-9_]*$", f"{key} must be an env var name")
 
 
 class EnvOverrideTests(unittest.TestCase):

@@ -58,12 +58,7 @@ def _payload(
     errors = manifest.get("errors", []) + manifest.get("storage", {}).get("errors", [])
     effective_status = _notification_status(status, manifest_status, warnings, errors)
     tz = ZoneInfo((config or {}).get("backup", {}).get("timezone", "Asia/Kolkata"))
-    backup_ts_raw = (
-        manifest.get("timestamp")
-        or manifest.get("created_at")
-        or datetime.now(tz).isoformat()
-    )
-    backup_dt = datetime.fromisoformat(backup_ts_raw.replace("Z", "+00:00")).astimezone(tz)
+    backup_dt = _backup_datetime(manifest, tz)
 
     backup_size = (
         manifest.get("size_human")
@@ -87,6 +82,17 @@ def _payload(
         "warnings": warnings,
         "errors": errors,
     }
+
+def _backup_datetime(manifest: dict[str, Any], tz: ZoneInfo) -> datetime:
+    """Snapshot time from the manifest, falling back to now for a damaged one."""
+    raw = manifest.get("timestamp") or manifest.get("created_at")
+    if isinstance(raw, str):
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(tz)
+        except ValueError:
+            print(f"Ignoring unparseable manifest timestamp: {raw!r}", file=sys.stderr)
+    return datetime.now(tz)
+
 
 def _storage_destination_label(manifest: dict[str, Any], config: dict[str, Any]) -> str:
     external_enabled = bool(
@@ -133,28 +139,37 @@ def _github_run_url(base_url: str) -> str:
     return ""
 
 
-def _load_manifest(path: str | None) -> dict[str, Any]:
+def _read_json(path: str | None) -> Any:
+    # A run that failed mid-write can leave a truncated manifest or summary.
+    # Notification must still go out, so an unreadable file degrades to no
+    # metadata instead of killing the notifier on the failure path.
     if not path:
-        return {}
-    manifest_path = Path(path)
-    if not manifest_path.exists():
-        return {}
-    with manifest_path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+        return None
+    json_path = Path(path)
+    if not json_path.exists():
+        return None
+    try:
+        with json_path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError) as exc:
+        print(f"Ignoring unreadable JSON at {json_path}: {exc}", file=sys.stderr)
+        return None
+
+
+def _load_manifest(path: str | None) -> dict[str, Any]:
+    manifest = _read_json(path)
+    return manifest if isinstance(manifest, dict) else {}
 
 
 def _resolve_manifest(manifest_path: str | None, summary_path: str | None) -> dict[str, Any]:
     manifest = _load_manifest(manifest_path)
     if manifest:
         return manifest
-    if not summary_path:
+    summary = _read_json(summary_path)
+    if not isinstance(summary, dict):
         return {}
-    summary_file = Path(summary_path)
-    if not summary_file.exists():
-        return {}
-    with summary_file.open("r", encoding="utf-8") as handle:
-        summary = json.load(handle)
-    return summary.get("manifest", {}) if isinstance(summary, dict) else {}
+    nested = summary.get("manifest", {})
+    return nested if isinstance(nested, dict) else {}
 
 
 def _write_step_summary(payload: dict[str, Any]) -> None:
@@ -202,8 +217,15 @@ def _send_email(channel: dict[str, Any], payload: dict[str, Any]) -> bool:
     password = os.getenv(channel.get("password_env", "SMTP_PASSWORD"), "")
     from_addr = os.getenv(channel.get("from_env", "NOTIFY_EMAIL_FROM"), "") or username
     to_addr = os.getenv(channel.get("to_env", "NOTIFY_EMAIL_TO"), "")
-    port_value = os.getenv(channel.get("port_env", "SMTP_PORT"), "") or str(channel.get("port", 587))
-    port = int(port_value)
+    port_env = channel.get("port_env", "SMTP_PORT")
+    port_value = os.getenv(port_env, "") or str(channel.get("port", 587))
+    try:
+        port = int(port_value)
+    except ValueError:
+        # Report it like any other misconfigured setting rather than raising and
+        # skipping the notification channels that come after this one.
+        print(f"Email notification failed because {port_env} is not a number: {port_value!r}", file=sys.stderr)
+        return False
     use_tls = (os.getenv(channel.get("tls_env", "SMTP_USE_TLS"), "") or "true").strip().lower() in {
         "1",
         "true",

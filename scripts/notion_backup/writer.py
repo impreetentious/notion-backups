@@ -1,20 +1,28 @@
 from __future__ import annotations
 
 import json
+import os
 import tarfile
 from pathlib import Path
 from typing import Any
 
 def write_json(path: Path, payload: dict[str, Any] | list[Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
+    write_text(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 def write_text(path: Path, content: str) -> None:
+    # Write through a sibling temp file and rename into place. A run killed
+    # mid-write (Actions timeout or cancellation) then leaves either the old
+    # file or no file, never a truncated one -- manifest.json in particular is
+    # the restore entry point and must never be half-written.
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        handle.write(content)
+    tmp_path = path.with_name(f".{path.name}.tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 def create_tar_gz(source_dir: Path, archive_path: Path) -> None:
     archive_path.parent.mkdir(parents=True, exist_ok=True)
