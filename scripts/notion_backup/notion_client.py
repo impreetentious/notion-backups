@@ -11,6 +11,8 @@ from urllib import error, parse, request
 
 LOGGER = logging.getLogger(__name__)
 
+DEFAULT_NOTION_VERSION = "2026-03-11"
+
 class NotionApiError(RuntimeError):
     def __init__(
         self,
@@ -60,7 +62,7 @@ class NotionClient:
     def __init__(
         self,
         token: str | None = None,
-        notion_version: str = "2022-06-28",
+        notion_version: str = DEFAULT_NOTION_VERSION,
         timeout_seconds: int = 180,
         max_retries: int = 8,
         page_size: int = 100,
@@ -94,13 +96,18 @@ class NotionClient:
         return list(self._paginate("GET", f"/pages/{page_id}/properties/{encoded_property_id}"))
 
     def retrieve_database(self, database_id: str) -> dict[str, Any]:
+        """Retrieve a database container and its child data-source descriptors."""
         return self._request("GET", f"/databases/{database_id}")
+
+    def retrieve_data_source(self, data_source_id: str) -> dict[str, Any]:
+        """Retrieve the schema and parent metadata for one data source."""
+        return self._request("GET", f"/data_sources/{data_source_id}")
 
     def list_block_children(self, block_id: str) -> list[dict[str, Any]]:
         return list(self._paginate("GET", f"/blocks/{block_id}/children"))
 
-    def query_database(self, database_id: str) -> list[dict[str, Any]]:
-        return list(self._paginate("POST", f"/databases/{database_id}/query", body={}))
+    def query_data_source(self, data_source_id: str) -> list[dict[str, Any]]:
+        return list(self._paginate("POST", f"/data_sources/{data_source_id}/query", body={}))
 
     def search_all(self) -> list[dict[str, Any]]:
         return list(

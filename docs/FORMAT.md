@@ -2,9 +2,11 @@
 
 Format name: `notion-hybrid-backup`
 
-Current version: `2.3.0`
+Current version: `3.0.0`
 
-This repository treats the backup format as a stable restore contract. Future incompatible changes should create a new version and keep readers for old versions.
+This repository treats the backup format as a stable restore contract. Version `3.0.0` moves database rows below their individual data sources so one database container can preserve several independent schemas and row sets. It is intentionally incompatible with the v2 database layout.
+
+No restore reader is currently shipped in this repository. Any future reader must branch on `format_version`: v2 snapshots use `databases/<database-id>/rows.json`, while v3 snapshots enumerate `data_source` entries in the manifest and read each source's files below its database container.
 
 ## Snapshot Layout
 
@@ -21,7 +23,10 @@ exports/NB_YYYYMMDD_HHMMSS+0530/
   databases/
     <notion-database-id-without-dashes>/
       database.json
-      rows.json
+      data_sources/
+        <notion-data-source-id-without-dashes>/
+          data_source.json
+          rows.json
   linked_views/
     <notion-block-id-without-dashes>/
       view_reference.json
@@ -61,10 +66,12 @@ NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz
 - `manifest.json.restore_map` maps original Notion IDs to file paths and parent metadata.
 - `manifest.json.complete` is `false` when recoverable traversal warnings or object errors occurred.
 - `counts.linked_views` records secondary linked database view wrappers that Notion exposes as `child_database` blocks but does not allow the API to query directly.
-- `counts_by_root` breaks down `pages`, `databases`, `database_rows`, and `blocks` per configured root, keyed by root title, so relative crawl cost per root is visible without recomputing it from `objects`.
+- `counts.data_sources` records the number of queryable sources captured beneath database containers.
+- `counts_by_root` breaks down `pages`, `databases`, `data_sources`, `database_rows`, and `blocks` per configured root, keyed by root title, so relative crawl cost per root is visible without recomputing it from `objects`.
+- Each `database` object records its `data_source_ids`. Each `data_source` object records its direct database parent, the database's own parent, and separate metadata/row paths, so data sources retain their independent schemas and rows.
 - `linked_database_view` objects preserve wrapper metadata and a small `view_reference.json` artifact for restore/manual reconstruction reference.
 - Page Markdown is for human-readable recovery and migration.
-- Page/database JSON is the authoritative restore source because it preserves the raw API objects.
+- Page, database, and data-source JSON is the authoritative restore source because it preserves the raw API objects.
 - Block JSON preserves unsupported Markdown block details.
 - Paths are based on Notion IDs, not page titles, so renames do not create ambiguous file paths.
 
@@ -72,9 +79,9 @@ NotionBackups/NB_YYYYMMDD_HHMMSS+0530.tar.gz
 
 The backup preserves, as far as the Notion API exposes it:
 
-- page IDs, database IDs, and block IDs
+- page IDs, database IDs, data-source IDs, and block IDs
 - page titles and properties, including complete title/rich-text/people/relation values fetched through the paginated property-item endpoint when a page object truncates them at 25 references (rollup and formula values stay as returned in the page object)
-- database schemas and row/page objects
+- database container metadata, every accessible data-source schema, and their aggregate row/page objects
 - parent references
 - child page and child database links
 - created and last edited timestamps

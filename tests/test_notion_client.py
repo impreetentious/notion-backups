@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from notion_backup.notion_client import NotionClient, _RateLimiter
+from notion_backup.notion_client import DEFAULT_NOTION_VERSION, NotionClient, _RateLimiter
 
 
 class RateLimiterTests(unittest.TestCase):
@@ -93,6 +93,26 @@ class PropertyItemPaginationTests(unittest.TestCase):
         self.assertIn("start_cursor=cursor-2", second_path)
 
 
+class DataSourceClientTests(unittest.TestCase):
+    @patch.object(NotionClient, "_request")
+    def test_data_source_requests_use_the_current_paths_and_paginate_rows(self, request_mock) -> None:
+        request_mock.side_effect = [
+            {"id": "source-1", "object": "data_source"},
+            {"object": "list", "results": [{"id": "row-1"}], "has_more": True, "next_cursor": "next"},
+            {"object": "list", "results": [{"id": "row-2"}], "has_more": False},
+        ]
+        client = NotionClient(token="fake-token")
+
+        data_source = client.retrieve_data_source("source-1")
+        rows = client.query_data_source("source-1")
+
+        self.assertEqual(data_source["object"], "data_source")
+        self.assertEqual(rows, [{"id": "row-1"}, {"id": "row-2"}])
+        self.assertEqual(request_mock.call_args_list[0].args[:2], ("GET", "/data_sources/source-1"))
+        self.assertTrue(request_mock.call_args_list[1].args[1].startswith("/data_sources/source-1/query"))
+        self.assertEqual(request_mock.call_args_list[2].args[2]["start_cursor"], "next")
+
+
 class NotionClientDefaultsTests(unittest.TestCase):
     def test_defaults_favor_full_page_size_and_measured_pacing(self) -> None:
         client = NotionClient(token="fake-token")
@@ -100,6 +120,7 @@ class NotionClientDefaultsTests(unittest.TestCase):
         self.assertEqual(client.page_size, 100)
         self.assertEqual(client.requests_per_second, 3.0)
         self.assertEqual(client.burst, 8)
+        self.assertEqual(client.notion_version, DEFAULT_NOTION_VERSION)
 
     def test_page_size_is_still_clamped_to_the_api_maximum(self) -> None:
         client = NotionClient(token="fake-token", page_size=500)

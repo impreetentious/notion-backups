@@ -68,7 +68,7 @@ class BumpRootCountTests(unittest.TestCase):
 
         self.assertEqual(
             self.runner.counts_by_root["Second Brain ⭐️"],
-            {"pages": 1, "databases": 0, "database_rows": 0, "blocks": 0},
+            {"pages": 1, "databases": 0, "data_sources": 0, "database_rows": 0, "blocks": 0},
         )
 
     def test_repeated_bumps_accumulate(self) -> None:
@@ -95,6 +95,8 @@ class BumpRootCountTests(unittest.TestCase):
 ROOT_PAGE_ID = "root-ground-zero"
 CHILD_PAGE_ID = "child-page-1"
 DATABASE_ID = "db-tasks"
+PRIMARY_DATA_SOURCE_ID = "source-tasks"
+SECONDARY_DATA_SOURCE_ID = "source-notes"
 ROW_ONE_ID = "row-1"
 ROW_TWO_ID = "row-2"
 ROOT_TITLE = "Ground Zero 🌪️"
@@ -127,7 +129,7 @@ def _paragraph(block_id: str) -> dict:
 class FullRunFakeClient:
     """Fake client covering pages, a child page, and a child database with rows."""
 
-    notion_version = "2022-06-28"
+    notion_version = "2026-03-11"
 
     def retrieve_page(self, page_id: str) -> dict:
         if page_id == ROOT_PAGE_ID:
@@ -166,10 +168,29 @@ class FullRunFakeClient:
             "object": "database",
             "parent": {"type": "page_id", "page_id": ROOT_PAGE_ID},
             "title": [{"plain_text": "Tasks"}],
+            "data_sources": [
+                {"id": PRIMARY_DATA_SOURCE_ID, "name": "Tasks"},
+                {"id": SECONDARY_DATA_SOURCE_ID, "name": "Notes"},
+            ],
         }
 
-    def query_database(self, database_id: str) -> list[dict]:
-        return [{"id": ROW_ONE_ID}, {"id": ROW_TWO_ID}]
+    def retrieve_data_source(self, data_source_id: str) -> dict:
+        names = {PRIMARY_DATA_SOURCE_ID: "Tasks", SECONDARY_DATA_SOURCE_ID: "Notes"}
+        return {
+            "id": data_source_id,
+            "object": "data_source",
+            "parent": {"type": "database_id", "database_id": DATABASE_ID},
+            "database_parent": {"type": "page_id", "page_id": ROOT_PAGE_ID},
+            "title": [{"plain_text": names[data_source_id]}],
+            "properties": {},
+        }
+
+    def query_data_source(self, data_source_id: str) -> list[dict]:
+        rows = {
+            PRIMARY_DATA_SOURCE_ID: [{"id": ROW_ONE_ID, "object": "page"}],
+            SECONDARY_DATA_SOURCE_ID: [{"id": ROW_TWO_ID, "object": "page"}],
+        }
+        return rows[data_source_id]
 
     def search_all(self) -> list[dict]:
         return []
@@ -291,16 +312,17 @@ class HydratedFullRunClient(FullRunFakeClient):
     def __init__(self) -> None:
         self.property_calls: list[tuple[str, str]] = []
 
-    def query_database(self, database_id: str) -> list[dict]:
-        rows = super().query_database(database_id)
-        rows[0]["properties"] = {
-            "Linked": {
-                "id": "rel-prop",
-                "type": "relation",
-                "relation": [{"id": f"r{i}"} for i in range(25)],
-                "has_more": True,
+    def query_data_source(self, data_source_id: str) -> list[dict]:
+        rows = super().query_data_source(data_source_id)
+        if data_source_id == PRIMARY_DATA_SOURCE_ID:
+            rows[0]["properties"] = {
+                "Linked": {
+                    "id": "rel-prop",
+                    "type": "relation",
+                    "relation": [{"id": f"r{i}"} for i in range(25)],
+                    "has_more": True,
+                }
             }
-        }
         return rows
 
     def retrieve_page_property_items(self, page_id: str, property_id: str) -> list[dict]:
@@ -318,7 +340,14 @@ class FullRunHydrationTests(unittest.TestCase):
             client = HydratedFullRunClient()
             snapshot_dir = BackupRunner(_full_run_config(output_dir), client).run()
             rows = json.loads(
-                (snapshot_dir / "databases" / "dbtasks" / "rows.json").read_text(encoding="utf-8")
+                (
+                    snapshot_dir
+                    / "databases"
+                    / "dbtasks"
+                    / "data_sources"
+                    / "sourcetasks"
+                    / "rows.json"
+                ).read_text(encoding="utf-8")
             )
 
         linked = rows[0]["properties"]["Linked"]
@@ -348,6 +377,59 @@ class FrontMatterQuotingTests(unittest.TestCase):
         self.assertIn('title: "Roadmap: Q3 \\"beta\\""', content)
 
 
+class MultiSourceDatabaseTests(unittest.TestCase):
+    def test_database_containers_preserve_each_data_source_schema_and_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "exports"
+            snapshot_dir = BackupRunner(_full_run_config(output_dir), FullRunFakeClient()).run()
+            database_dir = snapshot_dir / "databases" / "dbtasks"
+            database = json.loads((database_dir / "database.json").read_text(encoding="utf-8"))
+            primary_rows = json.loads(
+                (database_dir / "data_sources" / "sourcetasks" / "rows.json").read_text(encoding="utf-8")
+            )
+            secondary_rows = json.loads(
+                (database_dir / "data_sources" / "sourcenotes" / "rows.json").read_text(encoding="utf-8")
+            )
+            manifest = json.loads((snapshot_dir / "manifest.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(manifest["format_version"], "3.0.0")
+        self.assertEqual(
+            [item["id"] for item in database["data_sources"]],
+            [PRIMARY_DATA_SOURCE_ID, SECONDARY_DATA_SOURCE_ID],
+        )
+        self.assertEqual([row["id"] for row in primary_rows], [ROW_ONE_ID])
+        self.assertEqual([row["id"] for row in secondary_rows], [ROW_TWO_ID])
+        data_sources = [item for item in manifest["objects"] if item["type"] == "data_source"]
+        self.assertEqual({item["id"] for item in data_sources}, {PRIMARY_DATA_SOURCE_ID, SECONDARY_DATA_SOURCE_ID})
+        self.assertTrue(all(item["database_id"] == DATABASE_ID for item in data_sources))
+
+
+class SearchDataSourceSeedTests(unittest.TestCase):
+    def test_search_results_for_multiple_data_sources_seed_one_database_container(self) -> None:
+        class SearchClient:
+            def search_all(self) -> list[dict]:
+                return [
+                    {
+                        "object": "data_source",
+                        "id": PRIMARY_DATA_SOURCE_ID,
+                        "parent": {"type": "database_id", "database_id": DATABASE_ID},
+                    },
+                    {
+                        "object": "data_source",
+                        "id": SECONDARY_DATA_SOURCE_ID,
+                        "parent": {"type": "database_id", "database_id": DATABASE_ID},
+                    },
+                    {"object": "page", "id": "loose-page"},
+                ]
+
+        seeds = BackupRunner({"backup": {"include_all_accessible": True}}, SearchClient())._seed_queue()
+
+        self.assertEqual(
+            [(item.object_type, item.object_id) for item in seeds],
+            [("database", DATABASE_ID), ("page", "loose-page")],
+        )
+
+
 class CountsByRootManifestTests(unittest.TestCase):
     def test_counts_by_root_shape_and_totals_in_full_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,12 +443,12 @@ class CountsByRootManifestTests(unittest.TestCase):
         self.assertEqual(list(counts_by_root.keys()), [ROOT_TITLE])
         self.assertEqual(
             counts_by_root[ROOT_TITLE],
-            {"pages": 4, "databases": 1, "database_rows": 2, "blocks": 5},
+            {"pages": 4, "databases": 1, "data_sources": 2, "database_rows": 2, "blocks": 5},
         )
 
         # Per-root totals reconcile with the flat top-level counts.
         totals = manifest["counts"]
-        for metric in ("pages", "databases", "database_rows", "blocks"):
+        for metric in ("pages", "databases", "data_sources", "database_rows", "blocks"):
             self.assertEqual(
                 sum(bucket[metric] for bucket in counts_by_root.values()),
                 totals[metric],

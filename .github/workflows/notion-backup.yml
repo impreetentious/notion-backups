@@ -46,11 +46,23 @@ jobs:
         with:
           python-version: "3.12"
 
+      # rclone comes from the project's own release and is checked against its
+      # published SHA-256, not from the runner image's package repository: a
+      # scheduled run months from now then moves the same bytes as the run this
+      # workflow was tested against.
       - name: Install rclone
+        env:
+          RCLONE_VERSION: "1.68.2"
+          RCLONE_SHA256: "0e6fa18051e67fc600d803a2dcb10ddedb092247fc6eee61be97f64ec080a13c"
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y rclone
+          archive="rclone-v${RCLONE_VERSION}-linux-amd64.zip"
+          curl -fsSLO "https://downloads.rclone.org/v${RCLONE_VERSION}/${archive}"
+          echo "${RCLONE_SHA256}  ${archive}" | sha256sum -c -
+          unzip -q "${archive}"
+          sudo install -m 0755 "rclone-v${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
+          rm -rf "${archive}" "rclone-v${RCLONE_VERSION}-linux-amd64"
+          rclone version
 
       - name: Configure Google Drive archive
         env:

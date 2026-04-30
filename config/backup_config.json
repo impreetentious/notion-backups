@@ -1,6 +1,6 @@
 {
   "notion": {
-    "api_version": "2022-06-28",
+    "api_version": "2026-03-11",
     "burst": 8,
     "max_retries": 8,
     "page_size": 100,
@@ -60,10 +60,8 @@
     "min_snapshots": 2
   },
   "storage": {
-    "primary": "google_drive",
     "external_archive": {
       "enabled": true,
-      "provider": "google_drive",
       "command": "rclone",
       "remote": "notionbackups",
       "folder": "NotionBackups",

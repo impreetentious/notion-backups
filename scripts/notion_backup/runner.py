@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from . import FORMAT_NAME, FORMAT_VERSION
 from .config import enabled_roots, load_config
 from .markdown import blocks_to_markdown, page_title
-from .notion_client import NotionApiError, NotionClient, normalize_id
+from .notion_client import DEFAULT_NOTION_VERSION, NotionApiError, NotionClient, normalize_id
 from .retention import apply_retention
 from .writer import create_tar_gz, directory_size_bytes, format_bytes, write_json, write_text
 
@@ -49,6 +49,7 @@ class BackupRunner:
         self.counts = {
             "pages": 0,
             "databases": 0,
+            "data_sources": 0,
             "database_rows": 0,
             "blocks": 0,
             "block_fetch_errors": 0,
@@ -203,9 +204,27 @@ class BackupRunner:
         for result in self.client.search_all():
             object_type = result.get("object")
             object_id = result.get("id")
-            if object_type in {"page", "database"} and object_id:
+            if object_type == "page" and object_id:
                 seeds.append(QueueItem(object_type, object_id, "notion_search"))
+            elif object_type == "data_source" and object_id:
+                database_id = _data_source_parent_database_id(result)
+                if not database_id:
+                    data_source = self.client.retrieve_data_source(object_id)
+                    database_id = _data_source_parent_database_id(data_source)
+                if not database_id:
+                    raise NotionApiError(
+                        f"Search result data source {object_id} did not identify its parent database"
+                    )
+                seeds.append(QueueItem("database", database_id, "notion_search"))
         seeds.sort(key=lambda item: (item.object_type, normalize_id(item.object_id)))
+        deduplicated: list[QueueItem] = []
+        seed_keys: set[tuple[str, str]] = set()
+        for seed in seeds:
+            key = (seed.object_type, normalize_id(seed.object_id))
+            if key not in seed_keys:
+                seed_keys.add(key)
+                deduplicated.append(seed)
+        seeds = deduplicated
         LOGGER.info("Found %d accessible Notion seed objects", len(seeds))
         return seeds
 
@@ -319,17 +338,28 @@ class BackupRunner:
         database = self.client.retrieve_database(item.object_id)
         database_id = database["id"]
         database_dir = snapshot_dir / "databases" / normalize_id(database_id)
-        rows = self.client.query_database(database_id)
-        for row in rows:
-            self._hydrate_page_properties(row)
+
+        data_sources = database.get("data_sources")
+        if not isinstance(data_sources, list):
+            raise NotionApiError(
+                f"Database {database_id} did not return a data_sources list under API {self.client.notion_version}"
+            )
+        if not data_sources:
+            raise NotionApiError(
+                f"Database {database_id} does not contain any data sources accessible by this API bot.",
+                status_code=400,
+                body={
+                    "object": "error",
+                    "status": 400,
+                    "code": "validation_error",
+                    "message": "Database does not contain any data sources accessible by this API bot.",
+                },
+            )
 
         write_json(database_dir / "database.json", database)
-        write_json(database_dir / "rows.json", rows)
 
         self.counts["databases"] += 1
-        self.counts["database_rows"] += len(rows)
         self._bump_root_count(item.root_title, "databases")
-        self._bump_root_count(item.root_title, "database_rows", len(rows))
         self._record_object(
             object_id=database_id,
             object_type="database",
@@ -337,16 +367,110 @@ class BackupRunner:
             parent=database.get("parent", {}),
             files={
                 "metadata": _relative(snapshot_dir, database_dir / "database.json"),
-                "rows": _relative(snapshot_dir, database_dir / "rows.json"),
             },
             title=_database_title(database),
+            extra={"data_source_ids": [descriptor.get("id") for descriptor in data_sources if descriptor.get("id")]},
         )
 
-        return [
-            QueueItem("page", row["id"], f"database:{database_id}", root_title=item.root_title)
-            for row in rows
-            if row.get("id")
-        ]
+        children: list[QueueItem] = []
+        for descriptor in data_sources:
+            if not isinstance(descriptor, dict) or not isinstance(descriptor.get("id"), str):
+                raise NotionApiError(f"Database {database_id} returned an invalid data-source descriptor")
+            children.extend(
+                self._backup_data_source(
+                    snapshot_dir, database_id, database_dir, descriptor["id"], item
+                )
+            )
+        return children
+
+    def _backup_data_source(
+        self,
+        snapshot_dir: Path,
+        database_id: str,
+        database_dir: Path,
+        data_source_id: str,
+        database_item: QueueItem,
+    ) -> list[QueueItem]:
+        data_source = self.client.retrieve_data_source(data_source_id)
+        if data_source.get("id") != data_source_id:
+            raise NotionApiError(
+                f"Data source lookup for {data_source_id} returned unexpected ID {data_source.get('id')!r}"
+            )
+        if _data_source_parent_database_id(data_source) != database_id:
+            raise NotionApiError(
+                f"Data source {data_source_id} does not belong to database {database_id}"
+            )
+
+        rows = self.client.query_data_source(data_source_id)
+        page_rows: list[dict[str, Any]] = []
+        children: list[QueueItem] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise NotionApiError(f"Data source {data_source_id} query returned a non-object result")
+            object_type = row.get("object")
+            if object_type == "page":
+                self._hydrate_page_properties(row)
+                page_rows.append(row)
+                if row.get("id"):
+                    children.append(
+                        QueueItem(
+                            "page",
+                            row["id"],
+                            f"data_source:{database_id}:{data_source_id}",
+                            root_title=database_item.root_title,
+                        )
+                    )
+            elif object_type == "data_source":
+                child_data_source_id = row.get("id")
+                if not isinstance(child_data_source_id, str) or not child_data_source_id:
+                    raise NotionApiError(
+                        f"Data source {data_source_id} query returned a child data source without an ID"
+                    )
+                child_database_id = _data_source_parent_database_id(row)
+                if not child_database_id:
+                    child_data_source = self.client.retrieve_data_source(child_data_source_id)
+                    child_database_id = _data_source_parent_database_id(child_data_source)
+                if not child_database_id:
+                    raise NotionApiError(
+                        f"Nested data source {row.get('id')!r} did not identify its parent database"
+                    )
+                children.append(
+                    QueueItem(
+                        "database",
+                        child_database_id,
+                        f"data_source:{database_id}:{data_source_id}",
+                        root_title=database_item.root_title,
+                    )
+                )
+            else:
+                raise NotionApiError(
+                    f"Data source {data_source_id} query returned unsupported object type {object_type!r}"
+                )
+
+        data_source_dir = database_dir / "data_sources" / normalize_id(data_source_id)
+        write_json(data_source_dir / "data_source.json", data_source)
+        write_json(data_source_dir / "rows.json", page_rows)
+
+        self.counts["data_sources"] += 1
+        self.counts["database_rows"] += len(page_rows)
+        self._bump_root_count(database_item.root_title, "data_sources")
+        self._bump_root_count(database_item.root_title, "database_rows", len(page_rows))
+        self._record_object(
+            object_id=data_source_id,
+            object_type="data_source",
+            source=f"database:{database_id}",
+            parent=data_source.get("parent", {}),
+            files={
+                "metadata": _relative(snapshot_dir, data_source_dir / "data_source.json"),
+                "rows": _relative(snapshot_dir, data_source_dir / "rows.json"),
+            },
+            title=_database_title(data_source),
+            extra={
+                "database_id": database_id,
+                "database_parent": data_source.get("database_parent", {}),
+            },
+        )
+        return children
 
     def _hydrate_page_properties(self, page: dict[str, Any]) -> None:
         page_id = page.get("id")
@@ -443,8 +567,8 @@ class BackupRunner:
         linked_view_dir = snapshot_dir / "linked_views" / normalize_id(item.object_id)
         title = item.title or "Untitled"
         note = (
-            "Secondary linked database view block. Notion does not expose its data source via "
-            "GET /databases/{id}; the source collection must be captured by a primary database block elsewhere."
+            "Secondary linked database view block. Notion does not expose an accessible data source for "
+            "this wrapper; the source collection must be captured by a primary database block elsewhere."
         )
         reference = {
             "block_id": item.object_id,
@@ -483,7 +607,7 @@ class BackupRunner:
     def _bump_root_count(self, root_title: str, key: str, amount: int = 1) -> None:
         label = root_title or "(no configured root)"
         bucket = self.counts_by_root.setdefault(
-            label, {"pages": 0, "databases": 0, "database_rows": 0, "blocks": 0}
+            label, {"pages": 0, "databases": 0, "data_sources": 0, "database_rows": 0, "blocks": 0}
         )
         bucket[key] += amount
 
@@ -525,7 +649,7 @@ def run_backup(config_path: str | None = None) -> Path:
     config = load_config(config_path)
     notion = config.get("notion", {})
     client = NotionClient(
-        notion_version=notion.get("api_version", "2022-06-28"),
+        notion_version=notion.get("api_version", DEFAULT_NOTION_VERSION),
         timeout_seconds=int(notion.get("timeout_seconds", 180)),
         max_retries=int(notion.get("max_retries", 8)),
         page_size=int(notion.get("page_size", 100)),
@@ -576,6 +700,15 @@ def _database_title(database: dict[str, Any]) -> str:
     if not title:
         return "Untitled database"
     return "".join(item.get("plain_text", "") for item in title) or "Untitled database"
+
+
+def _data_source_parent_database_id(data_source: dict[str, Any]) -> str | None:
+    parent = data_source.get("parent")
+    if isinstance(parent, dict) and parent.get("type") == "database_id":
+        database_id = parent.get("database_id")
+        if isinstance(database_id, str) and database_id:
+            return database_id
+    return None
 
 
 def _relative(root: Path, path: Path) -> str:

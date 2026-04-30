@@ -2,13 +2,12 @@
 
 Personal, automated cron-based backup system for exporting Notion snapshots.
 
-**Release version:** `v1.4.0`
-
 ## What It Does
 
 - Is scheduled by GitHub Actions every Monday and Friday for `00:30 IST`; GitHub may start scheduled jobs later under load.
 - Keeps a manual GitHub Actions trigger.
 - Reads from Notion only. It never creates, edits, moves, archives or deletes Notion content.
+- Uses Notion API `2024-12-10`: database IDs identify containers, and each accessible data source is backed up with its own schema and rows, including multi-source databases.
 - Paces outbound Notion API calls with a client-side limiter (default: 3 requests/sec, burst of 8) so the run stays under Notion's rate limits proactively, in addition to retrying rate-limited/server-error responses with backoff.
 - Fetches complete title, rich-text, people and relation property values through Notion's paginated property-item endpoint, instead of stopping at the 25 references Notion returns inside page objects.
 - Writes restore-oriented snapshots into `exports/`.
@@ -16,6 +15,43 @@ Personal, automated cron-based backup system for exporting Notion snapshots.
 - Retains at least 30 days of external archives by default.
 - Uses a hybrid restore format: Markdown for page content, JSON for raw Notion metadata/databases and `manifest.json` for restore mapping.
 - Records status, size, format version, timestamp, storage destination, warnings and errors in each manifest.
+
+## Requirements
+
+- Python 3.12 or newer — the backup logic is pure standard library, with no packages to install. CI and the backup workflow both run 3.12.
+- The `rclone` binary, only if you want Google Drive archival.
+
+## Choosing What Gets Backed Up
+
+`config/backup_config.json` decides the scope. The runner backs up only the roots listed there, plus everything reachable beneath them:
+
+```json
+{
+  "backup": {
+    "scope": { "mode": "configured_roots" },
+    "roots": [
+      {
+        "type": "page",
+        "id": "<notion-page-id>",
+        "title": "Expected page title",
+        "top_level_only": true,
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
+- `id` is the Notion page or database ID. Your integration must have been shared into that page, or the run cannot see it.
+- `enabled: false` keeps a root in the file but skips it.
+- `title` is not a cosmetic label. When a page root has both `id` and `title`, the run verifies that the live Notion title still matches and **aborts the whole backup** on a mismatch, so a silently re-pointed ID cannot be backed up as if it were the intended page. Renaming a root page in Notion therefore requires updating this file — see [Operational Notes](#operational-notes). A page root may instead give `title` alone, in which case the run resolves it by searching Notion and fails if the title is not unique.
+- `top_level_only` asserts that the root is a workspace-level page: the run fails if the page turns out to be nested under another page, and title-only resolution ignores non-workspace matches. It does **not** limit traversal depth — every root is crawled through its full subtree of child pages, databases and rows regardless of this flag.
+
+Neither flag restricts scope; scope is exactly the listed roots plus everything reachable beneath them.
+
+`scope.mode` has one alternative, `all_top_level_pages`, which ignores the roots list and instead backs up every workspace-level page the integration can see. It cannot be combined with enabled roots — that combination is rejected at config load rather than silently resolved.
+
+The same file also holds the API pacing settings, the timezone, the retention window, the Drive remote, and which notification channels are active.
 
 ## Required Secrets
 
@@ -92,12 +128,17 @@ exports/NB_YYYYMMDD_HHMMSS+0530/
   pages/<page-id>/metadata.json
   pages/<page-id>/blocks.json
   databases/<database-id>/database.json
-  databases/<database-id>/rows.json
+  databases/<database-id>/data_sources/<data-source-id>/data_source.json
+  databases/<database-id>/data_sources/<data-source-id>/rows.json
 ```
 
-`manifest.json` is the restore entry point. It records format version, run metadata, object counts, original Notion IDs, parent references, file paths, size, status, storage destination, linked-view references and any warnings/errors from recoverable traversal failures.
+`manifest.json` is the restore entry point. It records format version, run metadata, object counts, original Notion IDs, parent references, file paths, size, status, storage destination, linked-view references and any warnings/errors from recoverable traversal failures. Database containers and their individual data sources are separate manifest objects, so each source keeps its own schema and row path.
 
 `size_bytes`/`size_human` measure the snapshot payload excluding `manifest.json` itself, at both the initial snapshot write and the storage finalize step, so the reported size is stable regardless of when the manifest was last rewritten.
+
+## Restoring
+
+There is no automated restore tool. Restoring is a manual process driven by `manifest.json`, which maps every exported file back to the Notion object it came from, including parent references so a tree can be rebuilt in order. Page content is Markdown; database schemas and rows are raw Notion JSON.
 
 ## Notifications
 
@@ -117,18 +158,34 @@ Webhook notifications are still available by enabling `generic_webhook` in `conf
 
 ## Development
 
-The backup logic is pure-stdlib Python; the only external binary is `rclone`. Run the unit tests from the repository root with the package sources on `PYTHONPATH`:
+Run the unit tests from the repository root with the package sources on `PYTHONPATH`:
 
 ```bash
 PYTHONPATH=scripts python3 -m unittest discover -s tests
 ```
 
-The same suite runs in CI on pushes to `main` and `nb-branch`, on every pull request, and on manual dispatch via `.github/workflows/tests.yml`.
+The same suite runs in CI on pushes to `main`, on every pull request, and on manual dispatch via `.github/workflows/tests.yml`.
 
 ## Operational Notes
 
 Human intervention may be needed for expired credentials, Notion API changes, quota/rate-limit issues, deliberate config changes, or a missed/disabled schedule.
 
-The repository is currently public. GitHub automatically disables scheduled workflows in public repositories after 60 days without repository activity, and an in-workflow notification cannot report a job that never starts. Making the repository private removes that auto-disable risk; until then, keep an eye on the Actions schedule.
+Renaming a configured root page in Notion breaks every subsequent run until `config/backup_config.json` is updated: the title check is fatal by design, so the run stops instead of silently backing up the wrong page. The same applies to moving a `top_level_only` root underneath another page.
 
-- Secondary linked database view wrappers are recorded as `linked_database_view` manifest objects instead of warnings because they contain no unique row data and cannot be queried through Notion's public API. Genuine inaccessible child databases still surface as warnings. Fatal root resolution failures, root page metadata failures and config errors stop the run because there is no reliable root snapshot to commit.
+GitHub automatically disables scheduled workflows in **public** repositories after 60 days without repository activity, and an in-workflow notification cannot report a job that never starts. If this repository is public, check the Actions schedule periodically; a private repository is not subject to that auto-disable rule.
+
+Secondary linked database view wrappers are recorded as `linked_database_view` manifest objects instead of warnings because they contain no unique row data and cannot be queried through Notion's public API. Genuine inaccessible child databases still surface as warnings. Fatal root resolution failures, root page metadata failures and config errors stop the run because there is no reliable root snapshot to commit.
+
+## Project Status
+
+This is a personal backup system that is published openly so it can be read, forked and adapted; it is not a general-purpose product and there is no support commitment. It is in active use against the workspace described by `config/backup_config.json`. To run your own copy, fork the repository, replace the roots in that file with your own Notion IDs, and add the secrets listed above.
+
+Issues and pull requests are welcome but may not be answered quickly. Please keep changes focused and make sure `PYTHONPATH=scripts python3 -m unittest discover -s tests` passes.
+
+## License
+
+MIT © Sidakpreet Singh — see [LICENSE](LICENSE).
+
+---
+
+**Version:** v1.4.1
