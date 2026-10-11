@@ -7,7 +7,7 @@ Personal, automated cron-based backup system for exporting Notion snapshots.
 - Is scheduled by GitHub Actions every Monday and Friday for `00:30 IST`; GitHub may start scheduled jobs later under load.
 - Keeps a manual GitHub Actions trigger.
 - Reads from Notion only. It never creates, edits, moves, archives or deletes Notion content.
-- Uses Notion API `2024-12-10`: database IDs identify containers, and each accessible data source is backed up with its own schema and rows, including multi-source databases.
+- Uses Notion API `2026-03-11`: database IDs identify containers, and each accessible data source is backed up with its own schema and rows, including multi-source databases.
 - Paces outbound Notion API calls with a client-side limiter (default: 3 requests/sec, burst of 8) so the run stays under Notion's rate limits proactively, in addition to retrying rate-limited/server-error responses with backoff.
 - Fetches complete title, rich-text, people and relation property values through Notion's paginated property-item endpoint, instead of stopping at the 25 references Notion returns inside page objects.
 - Writes restore-oriented snapshots into `exports/`.
@@ -188,4 +188,4 @@ MIT © Sidakpreet Singh — see [LICENSE](LICENSE).
 
 ---
 
-**Version:** v1.4.1
+**Version:** v1.4.2
